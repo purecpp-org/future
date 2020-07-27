@@ -220,8 +220,6 @@ public:
           std::async([func, arg, next_prom, this]() mutable {
             Invoke<first>(std::move(func), std::move(arg),
                           std::move(next_prom));
-            //              auto result = Invoke<first>(func.move(), std::move(arg.move()));
-            //              next_prom.move().SetValue(std::move(result));
           });
         } else if (policy == Lauch::Pool) {
           assert(executor);
@@ -229,14 +227,10 @@ public:
           executor->submit([func, arg, next_prom, this]() mutable {
             Invoke<first>(std::move(func), std::move(arg),
                           std::move(next_prom));
-            //              auto result = Invoke<first>(func.move(), std::move(arg.move()));
-            //              next_prom.move().SetValue(std::move(result));
           });
         } else {
           auto arg = MakeMoveWrapper(std::move(t));
           Invoke<first>(std::move(func), std::move(arg), std::move(next_prom));
-          //            auto result = Invoke<first>(func.move(), std::move(arg.move()));
-          //            next_prom.move().SetValue(std::move(result));
         }
       };
     } else if (shared_state_->state_ == internal::State::Done) {
@@ -260,8 +254,6 @@ public:
       } else {
         Invoke<first>(std::move(func), std::move(arg), std::move(next_prom));
       }
-      //        auto arg = MakeMoveWrapper(std::move(t));
-      //        Invoke<first>(std::move(func), std::move(arg), std::move(next_prom)); auto result = Invoke<first>(func.move(), std::move(t)); next_prom.move().SetValue(std::move(result));
     } else if (shared_state_->state_ == internal::State::Timeout) {
       throw std::runtime_error("timeout");
     }
@@ -314,11 +306,6 @@ public:
   }
 
   void Wait() { shared_state_->Wait(); }
-
-  //    template < typename Clock, typename Duration >
-  //    promise_wait_status wait_until(const std::chrono::time_point<Clock, Duration>& timeout_time) const {
-  //      return state_->wait_until(timeout_time);
-  //    }
 
 private:
   template <typename U, typename F, typename Arg>
