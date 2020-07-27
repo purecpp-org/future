@@ -14,7 +14,7 @@ namespace ray {
 
 enum class Lauch { Async, Pool, Sync };
 
-struct EmpEx {
+struct EmptyExecutor {
   template <typename F> void submit(F &&fn) {}
 };
 
@@ -39,82 +39,13 @@ public:
 
   template <typename F>
   Future<typename function_traits<F>::return_type> Then(Lauch policy, F &&fn) {
-    return ThenImpl(policy, (EmpEx *)nullptr, std::forward<F>(fn));
+    return ThenImpl(policy, (EmptyExecutor *)nullptr, std::forward<F>(fn));
   }
 
   template <typename F, typename Executor>
   Future<typename function_traits<F>::return_type> Then(Executor &executor,
                                                         F &&fn) {
     return ThenImpl(Lauch::Pool, &executor, std::forward<F>(fn));
-  }
-
-  template <typename F, typename Executor>
-  Future<typename function_traits<F>::return_type>
-  ThenImpl(Lauch policy, Executor *executor, F &&fn) {
-    static_assert(function_traits<F>::arity <= 1,
-                  "Then must take zero or one argument");
-    using first = typename function_traits<F>::first_arg_t;
-    using return_type = typename function_traits<F>::return_type;
-    Promise<return_type> next_promise;
-    auto next_future = next_promise.GetFuture();
-
-    auto func = MakeMoveWrapper(std::move(fn));
-    auto next_prom = MakeMoveWrapper(std::move(next_promise));
-
-    std::unique_lock<std::mutex> lock(shared_state_->then_mtx_);
-    if (shared_state_->state_ == FutureStatus::None) {
-      shared_state_->then_ = [policy, executor, func, next_prom,
-                              this](typename TryWrapper<T>::type &&t) mutable {
-        if (policy == Lauch::Async) {
-          auto arg = MakeMoveWrapper(std::move(t));
-          Async([func, arg, next_prom, this]() mutable {
-            Invoke<first>(std::move(func), std::move(arg),
-                          std::move(next_prom));
-          });
-        } else if (policy == Lauch::Pool) {
-          assert(executor);
-          auto arg = MakeMoveWrapper(std::move(t));
-          executor->submit([func, arg, next_prom, this]() mutable {
-            Invoke<first>(std::move(func), std::move(arg),
-                          std::move(next_prom));
-          });
-        } else {
-          auto arg = MakeMoveWrapper(std::move(t));
-          Invoke<first>(std::move(func), std::move(arg), std::move(next_prom));
-        }
-      };
-    } else if (shared_state_->state_ == FutureStatus::Done) {
-      typename TryWrapper<T>::type t;
-      try {
-        t = std::move(shared_state_->value_);
-      } catch (const std::exception &e) {
-        t = (typename TryWrapper<T>::type)(std::current_exception());
-      }
-      lock.unlock();
-
-      auto arg = MakeMoveWrapper(std::move(t));
-      if (policy == Lauch::Async) {
-        Async([func, arg, next_prom, this]() mutable {
-          Invoke<first>(std::move(func), std::move(arg), std::move(next_prom));
-        });
-      } else if (policy == Lauch::Pool) {
-        executor->submit([func, arg, next_prom, this]() mutable {
-          Invoke<first>(std::move(func), std::move(arg), std::move(next_prom));
-        });
-      } else {
-        Invoke<first>(std::move(func), std::move(arg), std::move(next_prom));
-      }
-    } else if (shared_state_->state_ == FutureStatus::Timeout) {
-      throw std::runtime_error("timeout");
-    }
-
-    return next_future;
-  }
-
-  template <typename R, typename F, typename Arg, typename P>
-  void Invoke(F &&func, Arg &&arg, P &&p) {
-    auto result = Invoke<R>(func.move(), arg.move());
-    p.move().SetValue(std::move(result));
   }
 
   T Get() {
@@ -136,13 +67,6 @@ public:
     return GetImpl<T>();
   }
 
-  template <typename R> absl::enable_if_t<std::is_void<R>::value> GetImpl() {}
-
-  template <typename R>
-  absl::enable_if_t<!std::is_void<R>::value, T> GetImpl() {
-    return shared_state_->value_.Value();
-  }
-
   template <typename Rep, typename Period>
   FutureStatus
   Wait_for(const std::chrono::duration<Rep, Period> &timeout_duration) const {
@@ -158,6 +82,66 @@ public:
   void Wait() { shared_state_->Wait(); }
 
 private:
+  template <typename F, typename Executor>
+  Future<typename function_traits<F>::return_type>
+  ThenImpl(Lauch policy, Executor *executor, F &&fn) {
+    static_assert(function_traits<F>::arity <= 1,
+                  "Then must take zero or one argument");
+    using FirstArg = typename function_traits<F>::first_arg_t;
+    using return_type = typename function_traits<F>::return_type;
+    Promise<return_type> next_promise;
+    auto next_future = next_promise.GetFuture();
+
+    auto func = MakeMoveWrapper(std::move(fn));
+    auto next_prom = MakeMoveWrapper(std::move(next_promise));
+
+    std::unique_lock<std::mutex> lock(shared_state_->then_mtx_);
+    if (shared_state_->state_ == FutureStatus::None) {
+      shared_state_->then_ = [policy, executor, func, next_prom,
+          this](typename TryWrapper<T>::type &&t) mutable {
+        ExecuteTask<FirstArg>(policy, executor, func, next_prom, std::move(t));
+      };
+    } else if (shared_state_->state_ == FutureStatus::Done) {
+      typename TryWrapper<T>::type t;
+      try {
+        t = std::move(shared_state_->value_);
+      } catch (const std::exception &e) {
+        t = (typename TryWrapper<T>::type)(std::current_exception());
+      }
+      lock.unlock();
+
+      ExecuteTask<FirstArg>(policy, executor, func, next_prom, std::move(t));
+    } else if (shared_state_->state_ == FutureStatus::Timeout) {
+      throw std::runtime_error("timeout");
+    }
+
+    return next_future;
+  }
+
+  template<typename FirstArg, typename F, typename Executor>
+  void ExecuteTask(Lauch policy, Executor* executor, MoveWrapper<F> func, MoveWrapper<Promise<T>> next_prom, typename TryWrapper<T>::type&& t){
+    auto arg = MakeMoveWrapper(std::move(t));
+    auto task = [func, arg, next_prom, this]() mutable {
+      auto result = Invoke<FirstArg>(func.move(), arg.move());
+      next_prom->SetValue(std::move(result));
+    };
+    if (policy == Lauch::Async) {
+      Async(std::move(task));
+    } else if (policy == Lauch::Pool) {
+      executor->submit(std::move(task));
+    } else {
+      task();
+    }
+  }
+
+  template <typename R>
+  absl::enable_if_t<std::is_void<R>::value> GetImpl() {}
+
+  template <typename R>
+  absl::enable_if_t<!std::is_void<R>::value, T> GetImpl() {
+    return shared_state_->value_.Value();
+  }
+
   template <typename U, typename F, typename Arg>
   auto Invoke(F fn, Arg arg) ->
       typename std::enable_if<!IsTry<U>::value && std::is_same<void, U>::value,
@@ -204,21 +188,21 @@ private:
 
 namespace future_internal {
 template <typename R, typename P, typename F, typename Tuple>
-absl::enable_if_t<std::is_void<R>::value> SetValue(P &promise, F &&fn,
+inline absl::enable_if_t<std::is_void<R>::value> SetValue(P &promise, F &&fn,
                                                    Tuple &&tp) {
   absl::apply(fn, std::move(tp));
   promise.SetValue();
 }
 
 template <typename R, typename P, typename F, typename Tuple>
-absl::enable_if_t<!std::is_void<R>::value> SetValue(P &promise, F &&fn,
+inline absl::enable_if_t<!std::is_void<R>::value> SetValue(P &promise, F &&fn,
                                                     Tuple &&tp) {
   promise.SetValue(absl::apply(fn, std::move(tp)));
 }
 
 template <typename Executor, typename F, typename... Args>
 Future<typename function_traits<F>::return_type>
-AsyncImpl(Lauch policy, Executor *ex, F &&fn, Args &&... args) {
+inline AsyncImpl(Lauch policy, Executor *ex, F &&fn, Args &&... args) {
   using R = typename function_traits<F>::return_type;
   Promise<R> promise;
   auto future = promise.GetFuture();
@@ -233,6 +217,7 @@ AsyncImpl(Lauch policy, Executor *ex, F &&fn, Args &&... args) {
     }
   };
 
+  assert(policy!=Lauch::Sync);
   if (ex) {
     assert(policy == Lauch::Pool);
     ex->submit(std::move(task));
@@ -247,20 +232,21 @@ AsyncImpl(Lauch policy, Executor *ex, F &&fn, Args &&... args) {
 
 //free function of future
 template <typename F, typename... Args>
-Future<typename function_traits<F>::return_type> Async(F &&fn,
+inline Future<typename function_traits<F>::return_type> Async(F &&fn,
                                                        Args &&... args) {
-  return future_internal::AsyncImpl(Lauch::Async, (EmpEx *)nullptr, std::forward<F>(fn),
+  return future_internal::AsyncImpl(Lauch::Async, (EmptyExecutor *)nullptr, std::forward<F>(fn),
                                     std::forward<Args>(args)...);
 }
 
 template <typename Executor, typename F, typename... Args>
-Future<typename function_traits<F>::return_type> Async(Executor *ex, F &&fn,
+inline Future<typename function_traits<F>::return_type> Async(Executor *ex, F &&fn,
                                                        Args &&... args) {
   return future_internal::AsyncImpl(Lauch::Pool, ex, std::forward<F>(fn),
                                     std::forward<Args>(args)...);
 }
 
-template <typename T> inline Future<T> MakeReadyFuture(T &&value) {
+template <typename T>
+inline Future<T> MakeReadyFuture(T &&value) {
   Promise<absl::decay_t<T>> promise;
   promise.SetValue(std::forward<T>(value));
   return promise.GetFuture();
@@ -280,7 +266,8 @@ inline Future<T> MakeExceptFuture(std::exception_ptr &&e) {
   return promise.GetFuture();
 }
 
-template <typename T, typename E> inline Future<T> MakeExceptFuture(E &&e) {
+template <typename T, typename E>
+inline Future<T> MakeExceptFuture(E &&e) {
   Promise<T> promise;
   promise.SetException(std::make_exception_ptr(std::forward<E>(e)));
 
