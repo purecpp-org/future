@@ -41,6 +41,12 @@ TEST(future_then, basic_then)
   EXPECT_EQ(f.Get(), 8);
 }
 
+TEST(future_then, async_then)
+{
+  auto future = Async([]{return 2;}).Then([](int x){return x+2;}).Then([](int x){ return x+2; });
+  EXPECT_EQ(future.Get(), 6);
+}
+
 TEST(future_then, exception_then)
 {
   EXPECT_EQ(test(nullptr), -1);

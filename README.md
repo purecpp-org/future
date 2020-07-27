@@ -7,3 +7,4 @@ a demo of future extension
 2. improve tag dispatch;
 3. improve future.Get();
 4. when_all()/any();
+5. finally();
