@@ -7,104 +7,10 @@
 
 #include "helper.h"
 #include "try.h"
-#include <future>
-#include <memory>
-#include <mutex>
-#include <type_traits>
+#include "shared_state.h"
+#include "promise.h"
 
 namespace ray {
-
-enum class FutureStatus { None, Timeout, Done, Retrived };
-
-template <typename T> struct SharedState {
-  static_assert(std::is_same<T, void>::value ||
-                    std::is_copy_constructible<T>() ||
-                    std::is_move_constructible<T>(),
-                "must be copyable or movable or void");
-  SharedState() : state_(FutureStatus::None), has_retrieved_(false) {}
-  using ValueType = typename TryWrapper<T>::type;
-
-  void Wait() {
-    std::unique_lock<std::mutex> lock(then_mtx_);
-    cond_var_.wait(lock, [this]() { return state_ != FutureStatus::None; });
-  }
-
-  template <typename Rep, typename Period>
-  FutureStatus
-  WaitFor(const std::chrono::duration<Rep, Period> &timeout_duration) const {
-    std::unique_lock<std::mutex> lock(then_mtx_);
-    return cond_var_.wait_for(lock, timeout_duration,
-                              [this]() { return state_ != FutureStatus::None; })
-               ? state_
-               : FutureStatus::Timeout;
-  }
-
-  template <typename Clock, typename Duration>
-  FutureStatus WaitUntil(
-      const std::chrono::time_point<Clock, Duration> &timeout_time) const {
-    std::unique_lock<std::mutex> lock(then_mtx_);
-    return cond_var_.wait_until(lock, timeout_time,
-                                [this]() { return state_ != FutureStatus::None; })
-               ? state_
-               : FutureStatus::Timeout;
-  }
-
-  std::mutex then_mtx_;
-  std::condition_variable cond_var_;
-  Try<T> value_;
-  std::function<void(ValueType &&)> then_;
-  FutureStatus state_;
-  std::atomic<bool> has_retrieved_;
-};
-
-template <typename T> class Future;
-
-template <typename T> class Promise {
-public:
-  Promise() : shared_state_(std::make_shared<SharedState<T>>()) {}
-
-  template <typename... Args> void SetValue(Args &&... val) {
-    static_assert(sizeof...(Args) <= 1, "at most one argument");
-    {
-      std::unique_lock<std::mutex> lock(shared_state_->then_mtx_);
-      if (shared_state_->state_ != FutureStatus::None) {
-        return;
-      }
-
-      shared_state_->state_ = FutureStatus::Done;
-      SetValueInternal(std::forward<Args...>(val)...);
-      shared_state_->cond_var_.notify_all();
-    }
-
-    if (shared_state_->then_) {
-      shared_state_->then_(std::move(shared_state_->value_));
-    }
-  }
-
-  void SetException(std::exception_ptr &&exp) { SetValue(std::move(exp)); }
-
-  bool IsReady() { return shared_state_->state_ != FutureStatus::None; }
-
-  Future<T> GetFuture() {
-    shared_state_->has_retrieved_ = true;
-    return Future<T>(shared_state_);
-  }
-
-private:
-  template <typename V> void SetValueInternal(V &&val) {
-    shared_state_->value_ = absl::forward<V>(val);
-  }
-
-  void SetValueInternal() { shared_state_->value_ = Try<void>(); }
-
-  void SetValueInternal(std::exception_ptr &&e) {
-    shared_state_->value_ =
-        typename SharedState<T>::ValueType(std::move(e));
-  }
-
-private:
-  std::shared_ptr<SharedState<T>> shared_state_;
-};
 
 enum class Lauch { Async, Pool, Sync };
 
@@ -161,7 +67,7 @@ public:
                               this](typename TryWrapper<T>::type &&t) mutable {
         if (policy == Lauch::Async) {
           auto arg = MakeMoveWrapper(std::move(t));
-          std::async([func, arg, next_prom, this]() mutable {
+          Async([func, arg, next_prom, this]() mutable {
             Invoke<first>(std::move(func), std::move(arg),
                           std::move(next_prom));
           });
@@ -188,7 +94,7 @@ public:
 
       auto arg = MakeMoveWrapper(std::move(t));
       if (policy == Lauch::Async) {
-        std::async([func, arg, next_prom, this]() mutable {
+        Async([func, arg, next_prom, this]() mutable {
           Invoke<first>(std::move(func), std::move(arg), std::move(next_prom));
         });
       } else if (policy == Lauch::Pool) {
