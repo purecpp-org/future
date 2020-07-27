@@ -22,10 +22,13 @@ namespace ray{
     template<typename... Args>
     using ray_variant = absl::variant<Args...>;
 #else
+    //use std::variant in c++17
     template<typename... Args>
     using ray_variant = std::variant<Args...>;
 #endif
+    namespace {
     struct Blank{};
+    }
 
     template<typename T>
     class Try{
@@ -44,9 +47,7 @@ namespace ray{
       explicit Try(std::exception_ptr&& e) : val_(std::move(e)){}
 
       const T& Value() const &{
-        if (val_.index() != 1) {
-          throw std::logic_error("not value");
-        }
+        Check();
 
 #if __cplusplus < 201703L
         return absl::get<T>(val_);
@@ -62,12 +63,12 @@ namespace ray{
       operator T&& () && { return std::move(Value()); }
 
       T& Value() & {
-        //check TODO
+        Check();
         return absl::get<T>(val_);
       }
 
       T&& Value() &&{
-        //check TODO
+        Check();
         return std::move(absl::get<T>(val_));
       }
 
@@ -87,12 +88,22 @@ namespace ray{
 
       bool HasException() const { return val_.index() == 2; }
 
+      bool NotInit() const { return val_.index()==0; }
+
       template <typename R>
       R Get() {
         return std::forward<R>(Value());
       }
     private:
-        ray_variant<Blank, T, std::exception_ptr> val_;
+      void Check(){
+        if(HasException()){
+          std::rethrow_exception(absl::get<2>(val_));
+        }else if(NotInit()){
+          throw std::logic_error("not init");
+        }
+      }
+
+      ray_variant<Blank, T, std::exception_ptr> val_;
     };
 
     template<>
