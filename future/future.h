@@ -13,66 +13,65 @@
 #include <type_traits>
 
 namespace ray {
-namespace internal {
-enum class State { None, Timeout, Done, Retrived };
+
+enum class FutureStatus { None, Timeout, Done, Retrived };
 
 template <typename T> struct SharedState {
   static_assert(std::is_same<T, void>::value ||
                     std::is_copy_constructible<T>() ||
                     std::is_move_constructible<T>(),
                 "must be copyable or movable or void");
-  SharedState() : state_(State::None), has_retrieved_(false) {}
+  SharedState() : state_(FutureStatus::None), has_retrieved_(false) {}
   using ValueType = typename TryWrapper<T>::type;
 
   void Wait() {
     std::unique_lock<std::mutex> lock(then_mtx_);
-    cond_var_.wait(lock, [this]() { return state_ != State::None; });
+    cond_var_.wait(lock, [this]() { return state_ != FutureStatus::None; });
   }
 
   template <typename Rep, typename Period>
-  State
+  FutureStatus
   WaitFor(const std::chrono::duration<Rep, Period> &timeout_duration) const {
     std::unique_lock<std::mutex> lock(then_mtx_);
     return cond_var_.wait_for(lock, timeout_duration,
-                              [this]() { return state_ != State::None; })
+                              [this]() { return state_ != FutureStatus::None; })
                ? state_
-               : State::Timeout;
+               : FutureStatus::Timeout;
   }
 
   template <typename Clock, typename Duration>
-  State WaitUntil(
+  FutureStatus WaitUntil(
       const std::chrono::time_point<Clock, Duration> &timeout_time) const {
     std::unique_lock<std::mutex> lock(then_mtx_);
     return cond_var_.wait_until(lock, timeout_time,
-                                [this]() { return state_ != State::None; })
+                                [this]() { return state_ != FutureStatus::None; })
                ? state_
-               : State::Timeout;
+               : FutureStatus::Timeout;
   }
 
   std::mutex then_mtx_;
   std::condition_variable cond_var_;
   Try<T> value_;
   std::function<void(ValueType &&)> then_;
-  State state_;
+  FutureStatus state_;
   std::atomic<bool> has_retrieved_;
 };
-}
 
 template <typename T> class Future;
 
 template <typename T> class Promise {
 public:
-  Promise() : shared_state_(std::make_shared<internal::SharedState<T>>()) {}
+  Promise() : shared_state_(std::make_shared<SharedState<T>>()) {}
 
   template <typename... Args> void SetValue(Args &&... val) {
     static_assert(sizeof...(Args) <= 1, "at most one argument");
     {
       std::unique_lock<std::mutex> lock(shared_state_->then_mtx_);
-      if (shared_state_->state_ != internal::State::None) {
+      if (shared_state_->state_ != FutureStatus::None) {
         return;
       }
 
-      shared_state_->state_ = internal::State::Done;
+      shared_state_->state_ = FutureStatus::Done;
       SetValueInternal(std::forward<Args...>(val)...);
       shared_state_->cond_var_.notify_all();
     }
@@ -84,7 +83,7 @@ public:
 
   void SetException(std::exception_ptr &&exp) { SetValue(std::move(exp)); }
 
-  bool IsReady() { return shared_state_->state_ != internal::State::None; }
+  bool IsReady() { return shared_state_->state_ != FutureStatus::None; }
 
   Future<T> GetFuture() {
     shared_state_->has_retrieved_ = true;
@@ -100,11 +99,11 @@ private:
 
   void SetValueInternal(std::exception_ptr &&e) {
     shared_state_->value_ =
-        typename internal::SharedState<T>::ValueType(std::move(e));
+        typename SharedState<T>::ValueType(std::move(e));
   }
 
 private:
-  std::shared_ptr<internal::SharedState<T>> shared_state_;
+  std::shared_ptr<SharedState<T>> shared_state_;
 };
 
 enum class Lauch { Async, Pool, Sync };
@@ -112,61 +111,6 @@ enum class Lauch { Async, Pool, Sync };
 struct EmpEx {
   template <typename F> void submit(F &&fn) {}
 };
-
-template <typename R, typename P, typename F, typename Tuple>
-absl::enable_if_t<std::is_void<R>::value> SetValue(P &promise, F &&fn,
-                                                   Tuple &&tp) {
-  absl::apply(fn, std::move(tp));
-  promise.SetValue();
-}
-
-template <typename R, typename P, typename F, typename Tuple>
-absl::enable_if_t<!std::is_void<R>::value> SetValue(P &promise, F &&fn,
-                                                    Tuple &&tp) {
-  promise.SetValue(absl::apply(fn, std::move(tp)));
-}
-
-template <typename F, typename... Args>
-Future<typename function_traits<F>::return_type> Async(F &&fn,
-                                                       Args &&... args) {
-  return AsyncImpl(Lauch::Async, (EmpEx *)nullptr, std::forward<F>(fn),
-                   std::forward<Args>(args)...);
-}
-
-template <typename Executor, typename F, typename... Args>
-Future<typename function_traits<F>::return_type> Async(Executor *ex, F &&fn,
-                                                       Args &&... args) {
-  return AsyncImpl(Lauch::Pool, ex, std::forward<F>(fn),
-                   std::forward<Args>(args)...);
-}
-
-template <typename Executor, typename F, typename... Args>
-Future<typename function_traits<F>::return_type>
-AsyncImpl(Lauch policy, Executor *ex, F &&fn, Args &&... args) {
-  using R = typename function_traits<F>::return_type;
-  Promise<R> promise;
-  auto future = promise.GetFuture();
-  auto tp = std::forward_as_tuple(std::forward<Args>(args)...);
-  auto wrap_tp = MakeMoveWrapper(std::move(tp));
-
-  auto task = [promise, fn, wrap_tp]() mutable {
-    try {
-      SetValue<R>(promise, std::move(fn), wrap_tp.move());
-    } catch (...) {
-      promise.SetValue(std::current_exception());
-    }
-  };
-
-  if (ex) {
-    assert(policy == Lauch::Pool);
-    ex->submit(std::move(task));
-  } else {
-    std::thread thd(std::move(task));
-    thd.detach();
-  }
-
-  return promise.GetFuture();
-}
 
 template <typename T> class Future {
 public:
@@ -177,7 +121,7 @@ public:
   Future(Future &&fut) = default;
   Future &operator=(Future &&fut) = default;
 
-  explicit Future(std::shared_ptr<internal::SharedState<T>> state)
+  explicit Future(std::shared_ptr<SharedState<T>> state)
       : shared_state_(std::move(state)) {}
 
   bool Valid() const { return shared_state_ != nullptr; }
@@ -212,7 +156,7 @@ public:
     auto next_prom = MakeMoveWrapper(std::move(next_promise));
 
     std::unique_lock<std::mutex> lock(shared_state_->then_mtx_);
-    if (shared_state_->state_ == internal::State::None) {
+    if (shared_state_->state_ == FutureStatus::None) {
       shared_state_->then_ = [policy, executor, func, next_prom,
                               this](typename TryWrapper<T>::type &&t) mutable {
         if (policy == Lauch::Async) {
@@ -233,7 +177,7 @@ public:
           Invoke<first>(std::move(func), std::move(arg), std::move(next_prom));
         }
       };
-    } else if (shared_state_->state_ == internal::State::Done) {
+    } else if (shared_state_->state_ == FutureStatus::Done) {
       typename TryWrapper<T>::type t;
       try {
         t = std::move(shared_state_->value_);
@@ -254,7 +198,7 @@ public:
       } else {
         Invoke<first>(std::move(func), std::move(arg), std::move(next_prom));
       }
-    } else if (shared_state_->state_ == internal::State::Timeout) {
+    } else if (shared_state_->state_ == FutureStatus::Timeout) {
       throw std::runtime_error("timeout");
     }
 
@@ -271,12 +215,12 @@ public:
     {
       std::unique_lock<std::mutex> lock(shared_state_->then_mtx_);
       switch (shared_state_->state_) {
-      case internal::State::None:
+      case FutureStatus::None:
         break;
-      case internal::State::Timeout:
+      case FutureStatus::Timeout:
         throw std::runtime_error("timeout");
-      case internal::State::Done:
-        shared_state_->state_ = internal::State::Retrived;
+      case FutureStatus::Done:
+        shared_state_->state_ = FutureStatus::Retrived;
       default:
         throw std::runtime_error("already retrieved");
       }
@@ -294,13 +238,13 @@ public:
   }
 
   template <typename Rep, typename Period>
-  internal::State
+  FutureStatus
   Wait_for(const std::chrono::duration<Rep, Period> &timeout_duration) const {
     return shared_state_->wait_for(timeout_duration);
   }
 
   template <typename Clock, typename Duration>
-  internal::State WaitUntil(
+  FutureStatus WaitUntil(
       const std::chrono::time_point<Clock, Duration> &timeout_time) const {
     return shared_state_->WaitUntil(timeout_time);
   }
@@ -349,8 +293,66 @@ private:
     return try_type_t<type>(fn(std::move(arg)));
   }
 
-  std::shared_ptr<internal::SharedState<T>> shared_state_;
+  std::shared_ptr<SharedState<T>> shared_state_;
 };
+
+namespace future_internal {
+template <typename R, typename P, typename F, typename Tuple>
+absl::enable_if_t<std::is_void<R>::value> SetValue(P &promise, F &&fn,
+                                                   Tuple &&tp) {
+  absl::apply(fn, std::move(tp));
+  promise.SetValue();
+}
+
+template <typename R, typename P, typename F, typename Tuple>
+absl::enable_if_t<!std::is_void<R>::value> SetValue(P &promise, F &&fn,
+                                                    Tuple &&tp) {
+  promise.SetValue(absl::apply(fn, std::move(tp)));
+}
+
+template <typename Executor, typename F, typename... Args>
+Future<typename function_traits<F>::return_type>
+AsyncImpl(Lauch policy, Executor *ex, F &&fn, Args &&... args) {
+  using R = typename function_traits<F>::return_type;
+  Promise<R> promise;
+  auto future = promise.GetFuture();
+  auto tp = std::forward_as_tuple(std::forward<Args>(args)...);
+  auto wrap_tp = MakeMoveWrapper(std::move(tp));
+
+  auto task = [promise, fn, wrap_tp]() mutable {
+    try {
+      SetValue<R>(promise, std::move(fn), wrap_tp.move());
+    } catch (...) {
+      promise.SetValue(std::current_exception());
+    }
+  };
+
+  if (ex) {
+    assert(policy == Lauch::Pool);
+    ex->submit(std::move(task));
+  } else {
+    std::thread thd(std::move(task));
+    thd.detach();
+  }
+
+  return promise.GetFuture();
+}
+}
+
+//free function of future
+template <typename F, typename... Args>
+Future<typename function_traits<F>::return_type> Async(F &&fn,
+                                                       Args &&... args) {
+  return future_internal::AsyncImpl(Lauch::Async, (EmpEx *)nullptr, std::forward<F>(fn),
+                                    std::forward<Args>(args)...);
+}
+
+template <typename Executor, typename F, typename... Args>
+Future<typename function_traits<F>::return_type> Async(Executor *ex, F &&fn,
+                                                       Args &&... args) {
+  return future_internal::AsyncImpl(Lauch::Pool, ex, std::forward<F>(fn),
+                                    std::forward<Args>(args)...);
+}
 
 template <typename T> inline Future<T> MakeReadyFuture(T &&value) {
   Promise<absl::decay_t<T>> promise;
