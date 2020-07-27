@@ -17,132 +17,107 @@
 #endif
 #include "traits.h"
 
-namespace ray{
+namespace ray {
+
 #if __cplusplus <= 201402L
-    template<typename... Args>
-    using ray_variant = absl::variant<Args...>;
+template <typename... Args> using ray_variant = absl::variant<Args...>;
 #else
-    //use std::variant in c++17
-    template<typename... Args>
-    using ray_variant = std::variant<Args...>;
+// use std::variant in c++17
+template <typename... Args> using ray_variant = std::variant<Args...>;
 #endif
-    namespace {
-    struct Blank{};
+namespace {
+struct Blank {};
+}
+
+template <typename T> class Try {
+public:
+  Try() = default;
+
+  template <typename U> explicit Try(U &&val) : val_(std::forward<U>(val)) {}
+
+  template <typename U> Try<T> &operator=(U &&val) {
+    val_ = std::forward<U>(val);
+    return *this;
+  }
+
+  explicit Try(std::exception_ptr &&e) : val_(std::move(e)) {}
+
+  const T &Value() const & {
+    Check();
+
+#if __cplusplus < 201703L
+    return absl::get<T>(val_);
+#else
+    return std::get<T>(val_);
+#endif
+  }
+
+  operator const T &() const & { return Value(); }
+  operator T &() & { return Value(); }
+  operator T &&() && { return std::move(Value()); }
+
+  T &Value() & {
+    Check();
+    return absl::get<T>(val_);
+  }
+
+  T &&Value() && {
+    Check();
+    return std::move(absl::get<T>(val_));
+  }
+
+  std::exception_ptr &Exception() {
+    if (!HasException()) {
+      throw std::logic_error("not exception");
     }
 
-    template<typename T>
-    class Try{
-    public:
-      Try() = default;
-
-      template<typename U>
-      explicit Try(U&& val) : val_(std::forward<U>(val)){}
-
-      template<typename U>
-      Try<T>& operator = (U&& val) {
-        val_ = std::forward<U>(val);
-        return *this;
-      }
-
-      explicit Try(std::exception_ptr&& e) : val_(std::move(e)){}
-
-      const T& Value() const &{
-        Check();
-
 #if __cplusplus < 201703L
-        return absl::get<T>(val_);
+    return absl::get<2>(val_);
 #else
-        return std::get<T>(val_);
+    return std::get<2>(val_);
 #endif
-      }
+  }
 
-      operator const T& () const &{
-        return Value();
-      }
-      operator T& () & { return Value(); }
-      operator T&& () && { return std::move(Value()); }
+  bool HasValue() const { return val_.index() == 1; }
 
-      T& Value() & {
-        Check();
-        return absl::get<T>(val_);
-      }
+  bool HasException() const { return val_.index() == 2; }
 
-      T&& Value() &&{
-        Check();
-        return std::move(absl::get<T>(val_));
-      }
+  bool NotInit() const { return val_.index() == 0; }
 
-      std::exception_ptr& Exception()  {
-        if(!HasException()){
-          throw std::logic_error("not exception");
-        }
+  template <typename R> R Get() { return std::forward<R>(Value()); }
 
-#if __cplusplus < 201703L
-        return absl::get<2>(val_);
-#else
-        return std::get<2>(val_);
-#endif
-      }
+private:
+  void Check() {
+    if (HasException()) {
+      std::rethrow_exception(absl::get<2>(val_));
+    } else if (NotInit()) {
+      throw std::logic_error("not init");
+    }
+  }
 
-      bool HasValue() const { return val_.index() == 1; }
+  ray_variant<Blank, T, std::exception_ptr> val_;
+};
 
-      bool HasException() const { return val_.index() == 2; }
+template <> class Try<void> {
+public:
+  Try() { val_ = true; }
 
-      bool NotInit() const { return val_.index()==0; }
+  explicit Try(std::exception_ptr &&e) : val_(std::move(e)) {}
 
-      template <typename R>
-      R Get() {
-        return std::forward<R>(Value());
-      }
-    private:
-      void Check(){
-        if(HasException()){
-          std::rethrow_exception(absl::get<2>(val_));
-        }else if(NotInit()){
-          throw std::logic_error("not init");
-        }
-      }
+  bool HasValue() const { return val_.index() == 0; }
 
-      ray_variant<Blank, T, std::exception_ptr> val_;
-    };
+  bool HasException() const { return val_.index() == 1; }
 
-    template<>
-    class Try<void>{
-    public:
-        Try(){
-          val_ = true;
-        }
+  template <typename R> R Get() { return std::forward<R>(*this); }
 
-        explicit Try(std::exception_ptr&& e) : val_(std::move(e)){}
+private:
+  ray_variant<bool, std::exception_ptr> val_;
+};
 
-        bool HasValue() const {
-          return val_.index() == 0;
-        }
+template <typename T> struct TryWrapper { using type = Try<T>; };
 
-        bool HasException() const {
-          return val_.index() == 1;
-        }
+template <typename T> struct TryWrapper<Try<T>> { using type = Try<T>; };
 
-        template <typename R>
-        R Get() {
-          return std::forward<R>(*this);
-        }
-
-    private:
-        ray_variant<bool, std::exception_ptr> val_;
-    };
-
-    template <typename T>
-    struct TryWrapper {
-        using type = Try<T>;
-    };
-
-    template <typename T>
-    struct TryWrapper<Try<T>> {
-        using type = Try<T>;
-    };
-
-    template<typename T>
-    using try_type_t = typename TryWrapper<T>::type;
+template <typename T> using try_type_t = typename TryWrapper<T>::type;
 }
 #endif //FUTURE_DEMO_TRY_H
