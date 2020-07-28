@@ -47,6 +47,35 @@ TEST(future_then, async_then)
   EXPECT_EQ(future.Get(), 6);
 }
 
+TEST(when_any, any)
+{
+  std::vector<std::thread> threads;
+  std::vector<Promise<int> > pmv(8);
+  for (auto& pm : pmv) {
+    std::thread t([&pm]{
+      static int val = 10;
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      pm.SetValue(val++);
+    });
+    threads.emplace_back(std::move(t));
+  }
+
+  std::vector<Future<int> > futures;
+  for (auto& pm : pmv) {
+    futures.emplace_back(pm.GetFuture());
+  }
+
+  auto fany = WhenAny(std::begin(futures), std::end(futures));
+  fany.Then([]( Try<std::pair<size_t, int>> result) {//not support now
+    std::cerr << "Then collet int any!\n";
+    std::cerr << "Result " << result.Value().first << " = " << result.Value().second << std::endl;
+    return 0;
+  });
+
+  for (auto& t : threads)
+    t.join();
+}
+
 TEST(future_then, exception_then)
 {
   EXPECT_EQ(test(nullptr), -1);

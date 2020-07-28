@@ -45,6 +45,18 @@ template <typename T> struct IsTry : std::false_type { using Inner = T; };
 template <typename T> struct IsTry<Try<T>> : std::true_type {
   using Inner = T;
 };
+
+template <typename T> struct IsTry<Try<T>&&> : std::true_type {
+  using Inner = T;
+};
+
+template <typename T> struct IsTry<Try<T>&> : std::true_type {
+  using Inner = T;
+};
+
+template <typename T> struct IsTry<const Try<T>&> : std::true_type {
+  using Inner = T;
+};
 #endif
 
 template <typename T> struct function_traits;

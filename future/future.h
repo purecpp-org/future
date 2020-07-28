@@ -118,8 +118,8 @@ private:
     return next_future;
   }
 
-  template<typename FirstArg, typename F, typename Executor>
-  void ExecuteTask(Lauch policy, Executor* executor, MoveWrapper<F> func, MoveWrapper<Promise<T>> next_prom, typename TryWrapper<T>::type&& t){
+  template<typename FirstArg, typename F, typename Executor, typename U>
+  void ExecuteTask(Lauch policy, Executor* executor, MoveWrapper<F> func, MoveWrapper<Promise<U>> next_prom, typename TryWrapper<T>::type&& t){
     auto arg = MakeMoveWrapper(std::move(t));
     auto task = [func, arg, next_prom, this]() mutable {
       auto result = Invoke<FirstArg>(func.move(), arg.move());
@@ -272,6 +272,40 @@ inline Future<T> MakeExceptFuture(E &&e) {
   promise.SetException(std::make_exception_ptr(std::forward<E>(e)));
 
   return promise.GetFuture();
+}
+
+template<typename Iterator>
+using iterator_value_t = typename std::iterator_traits<Iterator>::value_type;
+
+template<typename T>
+using future_value_t = typename IsFuture<T>::Inner;
+
+template<typename Iterator>
+Future<std::pair<size_t, future_value_t<iterator_value_t<Iterator>>>> WhenAny(Iterator begin, Iterator end){
+  using it_value_type = iterator_value_t<Iterator>;
+  using value_t = future_value_t<it_value_type>;
+
+  if(begin==end){
+    return MakeReadyFuture<std::pair<size_t, value_t>>(std::make_pair(0, value_t()));
+  }
+
+  struct AnyContext {
+    AnyContext() {};
+    Promise<std::pair<size_t, value_t>> pm;
+    std::atomic<bool> done{false};
+  };
+
+  auto ctx = std::make_shared<AnyContext>();
+  for (size_t i = 0; begin != end; ++begin, ++i) {
+    begin->Then([ctx, i](typename TryWrapper<value_t>::type&& t) {
+      if (!ctx->done.exchange(true)) {
+        ctx->pm.SetValue(std::make_pair(i, std::move(t)));
+      }
+      return 0;
+    });
+  }
+
+  return ctx->pm.GetFuture();
 }
 }
 #endif //FUTURE_DEMO_FUTURE_H
