@@ -149,35 +149,66 @@ TEST(future_exception, value_exception){
   EXPECT_THROW(f.Get(), std::exception);
 }
 
-TEST(when_all, when_all){
-  std::vector<std::thread> threads;
-  std::vector<Promise<int> > pmv(8);
-  for (auto& pm : pmv) {
-    std::thread t([&pm]{
-      static int val = 10;
-      std::this_thread::sleep_for(std::chrono::milliseconds(100));
-      pm.SetValue(val++);
-    });
-    threads.emplace_back(std::move(t));
-  }
+//TEST(when_all, when_all){
+//  std::vector<std::thread> threads;
+//  std::vector<Promise<int> > pmv(8);
+//  for (auto& pm : pmv) {
+//    std::thread t([&pm]{
+//      static int val = 10;
+//      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+//      pm.SetValue(val++);
+//    });
+//    threads.emplace_back(std::move(t));
+//  }
+//
+//  std::vector<Future<int> > futures;
+//  for (auto& pm : pmv) {
+//    futures.emplace_back(pm.GetFuture());
+//  }
+//
+//  auto fall = WhenAll(std::begin(futures), std::end(futures));
+//  fall.Then([]( Try<std::vector<int>> result) {
+//    EXPECT_EQ(result.Value().size(), 8);
+//  });
+//
+//  for (auto& t : threads)
+//    t.join();
+//}
 
+TEST(when_all, when_all_vector){
+  Promise<int> p1;
+  Promise<int> p2;
   std::vector<Future<int> > futures;
-  for (auto& pm : pmv) {
-    futures.emplace_back(pm.GetFuture());
-  }
+  futures.emplace_back(p1.GetFuture());
+  futures.emplace_back(p2.GetFuture());
 
-  auto fall = WhenAll(std::begin(futures), std::end(futures));
-  fall.Then([]( Try<std::vector<int>> result) {
-    EXPECT_EQ(result.Value().size(), 8);
+  auto future = WhenAll(futures.begin(), futures.end());
+  p1.SetValue(42);
+  p2.SetValue(21);
+  auto result = future.Get();
+  auto& r1 = result[0];
+  auto& r2 = result[1];
 
-    auto& v = result.Value();
-    for(int i : v){
-      Print(i);
-    }
-  });
+  std::cout<<r1<<'\n';
+  std::cout<<r2<<'\n';
+}
 
-  for (auto& t : threads)
-    t.join();
+TEST(when_all, when_all_variadic){
+  Promise<int> p1;
+  Promise<void> p2;
+
+  auto f1 = p1.GetFuture();
+  auto f2 = p2.GetFuture();
+
+  auto future = WhenAll(f1, f2);
+  p1.SetValue(42);
+  p2.SetValue();
+  auto result = future.Get();
+  auto& r1 = std::get<0>(result);
+  auto& r2 = std::get<1>(result);
+
+  std::cout<<r1.Value()<<'\n';
+  std::cout<<r2.HasValue()<<'\n';
 }
 
 int main(int argc, char **argv) {

@@ -20,6 +20,7 @@ struct EmptyExecutor {
 
 template <typename T> class Future {
 public:
+  using InnerType = T;
   Future() = default;
   Future(const Future &) = delete;
   void operator=(const Future &) = delete;
@@ -197,7 +198,18 @@ private:
 
   template <typename U, typename F, typename Arg>
   auto Invoke(F fn, Arg arg) -> typename std::enable_if<
-      IsTry<U>::value && std::is_same<void, typename IsTry<U>::Inner>::value,
+      IsTry<U>::value && std::is_same<void, typename IsTry<U>::Inner>::value&&
+                         std::is_void<typename function_traits<F>::return_type>::value,
+      try_type_t<decltype(fn(std::move(arg)))>>::type {
+    using type = decltype(fn(std::move(arg)));
+    fn(std::move(arg));
+    return try_type_t<type>();
+  }
+
+  template <typename U, typename F, typename Arg>
+  auto Invoke(F fn, Arg arg) -> typename std::enable_if<
+      IsTry<U>::value && std::is_same<void, typename IsTry<U>::Inner>::value&&
+      !std::is_void<typename function_traits<F>::return_type>::value,
       try_type_t<decltype(fn(std::move(arg)))>>::type {
     using type = decltype(fn(std::move(arg)));
     return try_type_t<type>(fn(std::move(arg)));
@@ -349,22 +361,68 @@ WhenAll(Iterator begin, Iterator end){
     AllContext(int n) : results(n) {}
     Promise<std::vector<value_t>> pm;
     std::vector<value_t> results;
-    std::atomic<size_t> collected{0};
+    size_t count{0};
+    std::mutex mtx;
   };
 
   auto ctx = std::make_shared<AllContext>(std::distance(begin, end));
 
   for (size_t i = 0; begin != end; ++begin, ++i) {
     begin->Then([ctx, i](typename TryWrapper<value_t>::type&& t) {
+      std::unique_lock<std::mutex> lock(ctx->mtx);
+      ctx->count++;
       ctx->results[i] = std::move(t);
-      if (ctx->results.size() - 1 ==
-          std::atomic_fetch_add (&ctx->collected, std::size_t(1))) {
+      if (ctx->results.size() - 1 == ctx->count) {
         ctx->pm.SetValue(std::move(ctx->results));
       }
     });
   }
 
   return ctx->pm.GetFuture();
+}
+
+namespace internal {
+template <typename... F>
+class WhenAllContext : std::enable_shared_from_this<WhenAllContext<F...>> {
+public:
+  template <typename T, typename I> void operator()(T &&f, I i) {
+    using value_t =
+        typename TryWrapper<typename absl::decay_t<T>::InnerType>::type;
+    auto self = this->shared_from_this();
+    f.Then([i, self, this](value_t &&t) {
+      constexpr size_t Index = decltype(i)::value;
+
+      {
+        std::unique_lock<std::mutex> lock(mtx_);
+        std::get<decltype(i)::value>(results_) = std::move(t);
+      }
+
+      if (Index == sizeof...(F) - 1) {
+        pm_.SetValue(std::move(results_));
+      }
+    });
+  }
+
+  Future<std::tuple<typename TryWrapper<typename F::InnerType>::type...>>
+  GetFuture() {
+    return pm_.GetFuture();
+  }
+
+private:
+  Promise<std::tuple<typename TryWrapper<typename F::InnerType>::type...>> pm_;
+  std::tuple<typename TryWrapper<typename F::InnerType>::type...> results_;
+  std::mutex mtx_;
+};
+}
+
+template<typename... F>
+Future<std::tuple<Try<typename absl::decay_t<F>::InnerType>...>> WhenAll(F&&... futures)
+{
+  auto ctx = std::make_shared<internal::WhenAllContext<absl::decay_t<F>...>>();
+
+  for_each_tp(std::forward_as_tuple(std::forward<F>(futures)...), *ctx, absl::make_index_sequence<sizeof...(F)>{});
+
+  return ctx->GetFuture();
 }
 }
 #endif //FUTURE_DEMO_FUTURE_H

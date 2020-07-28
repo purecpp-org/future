@@ -59,6 +59,18 @@ template <typename T> struct IsTry<const Try<T>&> : std::true_type {
 };
 #endif
 
+template <typename... Args, typename F, std::size_t... Idx>
+inline void for_each_tp(std::tuple<Args...>& t, F&& f, absl::index_sequence<Idx...>)
+{
+  (void)std::initializer_list<int>{(std::forward<F>(f)(std::get<Idx>(t), std::integral_constant<size_t, Idx>{}), 0)...};
+}
+
+template <typename... Args, typename F, std::size_t... Idx>
+inline void for_each_tp(const std::tuple<Args...>& t, F&& f, absl::index_sequence<Idx...>)
+{
+  (void)std::initializer_list<int>{(std::forward<F>(f)(std::get<Idx>(t), std::integral_constant<size_t, Idx>{}), 0)...};
+}
+
 template <typename T> struct function_traits;
 
 template <typename Ret, typename... Args> struct function_traits<Ret(Args...)> {
