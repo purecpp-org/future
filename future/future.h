@@ -125,8 +125,12 @@ private:
     auto arg = MakeMoveWrapper(std::move(t));
     auto task = [func, arg, next_prom, this]() mutable {
       using R = typename function_traits<F>::return_type;
-      auto result = Invoke<FirstArg>(func.move(), arg.move());
-      next_prom->SetValue(std::move(result));
+      try {
+        auto result = Invoke<FirstArg>(func.move(), arg.move());
+        next_prom->SetValue(std::move(result));
+      } catch (...) {
+        next_prom->SetException(std::current_exception());
+      }
     };
     if (policy == Lauch::Async) {
       Async(std::move(task));

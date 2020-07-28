@@ -55,9 +55,8 @@ TEST(when_any, any)
 
   auto fany = WhenAny(std::begin(futures), std::end(futures));
   fany.Then([]( Try<std::pair<size_t, int>> result) {//not support now
-    std::cerr << "Then collet int any!\n";
     std::cerr << "Result " << result.Value().first << " = " << result.Value().second << std::endl;
-    return 0;
+    EXPECT_LT(result.Value().second, 18);
   });
 
   for (auto& t : threads)
@@ -68,18 +67,86 @@ TEST(future_then, then_void)
 {
   Promise<int> promise;
   auto future = promise.GetFuture();
-//  auto f = future.Then([](Try<int> x){
-//    std::cout<<x<<'\n';
-//  });
-
-  auto f1 = future.Then([](int x){
-    std::cout<<x<<'\n';
+  auto f = future.Then([](int x){
+    EXPECT_EQ(x, 1);
   });
 
   promise.SetValue(1);
-//  int r = future.Get();
-  f1.Get();
-//  EXPECT_EQ(test(nullptr), -1);
+  f.Get();
+}
+
+TEST(future_exception, async_ommit_exception) {
+  auto future = Async([] {
+    throw std::runtime_error("");
+    return 1;
+  });
+
+  auto f = future
+               .Then([](Try<int> t) {
+                 if (t.HasException()) {
+                   std::cout << "has exception\n";
+                 }
+
+                 return 42;
+               })
+               .Then([](int i) {
+                 return i + 2;
+               });
+
+  EXPECT_EQ(f.Get(), 44);
+}
+
+TEST(future_exception, async_exception) {
+  auto future = Async([] {
+    throw std::runtime_error("");
+    return 1;
+  });
+
+  auto f = future
+               .Then([](Try<int> t) {
+                 if (t.HasException()) {
+                   std::cout << "has exception\n";
+                 }
+
+                 return t + 42;
+               })
+               .Then([](int i) { return i + 2; });
+
+  EXPECT_THROW(f.Get(), std::exception);
+}
+
+TEST(future_exception, value_ommit_exception){
+  Promise<int> promise;
+  auto future = promise.GetFuture();
+  auto f = future.Then([](int x){
+    throw std::runtime_error("error");
+    return x+2;
+  }).Then([](Try<int> y){
+    if(y.HasException()){
+      std::cout<<"has exception\n";
+    }
+
+    return 2;
+  });
+
+  promise.SetValue(1);
+
+  EXPECT_EQ(f.Get(), 2);
+}
+
+TEST(future_exception, value_exception){
+  Promise<int> promise;
+  auto future = promise.GetFuture();
+  auto f = future.Then([](int x){
+    throw std::runtime_error("error");
+    return x+2;
+  }).Then([](int y){
+    return y+2;
+  });
+
+  promise.SetValue(1);
+
+  EXPECT_THROW(f.Get(), std::exception);
 }
 
 int main(int argc, char **argv) {
