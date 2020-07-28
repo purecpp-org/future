@@ -307,15 +307,14 @@ using iterator_value_t = typename std::iterator_traits<Iterator>::value_type;
 
 template <typename T> using future_value_t = typename IsFuture<T>::Inner;
 
-template <typename Iterator>
+template <typename Iterator> inline
 Future<std::pair<size_t, future_value_t<iterator_value_t<Iterator>>>>
 WhenAny(Iterator begin, Iterator end) {
   using it_value_type = iterator_value_t<Iterator>;
   using value_t = future_value_t<it_value_type>;
 
   if (begin == end) {
-    return MakeReadyFuture<std::pair<size_t, value_t>>(
-        std::make_pair(0, value_t()));
+    return MakeReadyFuture<std::pair<size_t, value_t>>({});
   }
 
   struct AnyContext {
@@ -329,6 +328,38 @@ WhenAny(Iterator begin, Iterator end) {
     begin->Then([ctx, i](typename TryWrapper<value_t>::type &&t) {
       if (!ctx->done.exchange(true)) {
         ctx->pm.SetValue(std::make_pair(i, std::move(t)));
+      }
+    });
+  }
+
+  return ctx->pm.GetFuture();
+}
+
+template <typename Iterator> inline
+Future<std::vector<future_value_t<iterator_value_t<Iterator>>>>
+WhenAll(Iterator begin, Iterator end){
+  using it_value_type = iterator_value_t<Iterator>;
+  using value_t = future_value_t<it_value_type>;
+
+  if (begin == end) {
+    return MakeReadyFuture<std::vector<value_t>>({});
+  }
+
+  struct AllContext {
+    AllContext(int n) : results(n) {}
+    Promise<std::vector<value_t>> pm;
+    std::vector<value_t> results;
+    std::atomic<size_t> collected{0};
+  };
+
+  auto ctx = std::make_shared<AllContext>(std::distance(begin, end));
+
+  for (size_t i = 0; begin != end; ++begin, ++i) {
+    begin->Then([ctx, i](typename TryWrapper<value_t>::type&& t) {
+      ctx->results[i] = std::move(t);
+      if (ctx->results.size() - 1 ==
+          std::atomic_fetch_add (&ctx->collected, std::size_t(1))) {
+        ctx->pm.SetValue(std::move(ctx->results));
       }
     });
   }

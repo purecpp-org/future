@@ -54,7 +54,7 @@ TEST(when_any, any)
   }
 
   auto fany = WhenAny(std::begin(futures), std::end(futures));
-  fany.Then([]( Try<std::pair<size_t, int>> result) {//not support now
+  fany.Then([]( Try<std::pair<size_t, int>> result) {
     std::cerr << "Result " << result.Value().first << " = " << result.Value().second << std::endl;
     EXPECT_LT(result.Value().second, 18);
   });
@@ -147,6 +147,37 @@ TEST(future_exception, value_exception){
   promise.SetValue(1);
 
   EXPECT_THROW(f.Get(), std::exception);
+}
+
+TEST(when_all, when_all){
+  std::vector<std::thread> threads;
+  std::vector<Promise<int> > pmv(8);
+  for (auto& pm : pmv) {
+    std::thread t([&pm]{
+      static int val = 10;
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      pm.SetValue(val++);
+    });
+    threads.emplace_back(std::move(t));
+  }
+
+  std::vector<Future<int> > futures;
+  for (auto& pm : pmv) {
+    futures.emplace_back(pm.GetFuture());
+  }
+
+  auto fall = WhenAll(std::begin(futures), std::end(futures));
+  fall.Then([]( Try<std::vector<int>> result) {
+    EXPECT_EQ(result.Value().size(), 8);
+
+    auto& v = result.Value();
+    for(int i : v){
+      Print(i);
+    }
+  });
+
+  for (auto& t : threads)
+    t.join();
 }
 
 int main(int argc, char **argv) {
