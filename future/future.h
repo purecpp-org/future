@@ -98,7 +98,7 @@ private:
     std::unique_lock<std::mutex> lock(shared_state_->then_mtx_);
     if (shared_state_->state_ == FutureStatus::None) {
       shared_state_->then_ = [policy, executor, func, next_prom,
-          this](typename TryWrapper<T>::type &&t) mutable {
+                              this](typename TryWrapper<T>::type &&t) mutable {
         ExecuteTask<FirstArg>(policy, executor, func, next_prom, std::move(t));
       };
     } else if (shared_state_->state_ == FutureStatus::Done) {
@@ -118,10 +118,13 @@ private:
     return next_future;
   }
 
-  template<typename FirstArg, typename F, typename Executor, typename U>
-  void ExecuteTask(Lauch policy, Executor* executor, MoveWrapper<F> func, MoveWrapper<Promise<U>> next_prom, typename TryWrapper<T>::type&& t){
+  template <typename FirstArg, typename F, typename Executor, typename U>
+  void ExecuteTask(Lauch policy, Executor *executor, MoveWrapper<F> func,
+                   MoveWrapper<Promise<U>> next_prom,
+                   typename TryWrapper<T>::type &&t) {
     auto arg = MakeMoveWrapper(std::move(t));
     auto task = [func, arg, next_prom, this]() mutable {
+      using R = typename function_traits<F>::return_type;
       auto result = Invoke<FirstArg>(func.move(), arg.move());
       next_prom->SetValue(std::move(result));
     };
@@ -134,15 +137,14 @@ private:
     }
   }
 
-  template <typename R>
-  absl::enable_if_t<std::is_void<R>::value> GetImpl() {}
+  template <typename R> absl::enable_if_t<std::is_void<R>::value> GetImpl() {}
 
   template <typename R>
   absl::enable_if_t<!std::is_void<R>::value, T> GetImpl() {
     return shared_state_->value_.Value();
   }
 
-  template <typename U, typename F, typename Arg>
+  template <typename R, typename U, typename F, typename Arg>
   auto Invoke(F fn, Arg arg) ->
       typename std::enable_if<!IsTry<U>::value && std::is_same<void, U>::value,
                               try_type_t<decltype(fn())>>::type {
@@ -151,19 +153,42 @@ private:
   }
 
   template <typename U, typename F, typename Arg>
-  auto Invoke(F fn, Arg arg) ->
-      typename std::enable_if<!IsTry<U>::value && !std::is_same<void, U>::value,
-                              try_type_t<decltype(fn(arg.Value()))>>::type {
+  auto Invoke(F fn, Arg arg) -> typename std::enable_if<
+      !IsTry<U>::value && !std::is_same<void, U>::value &&
+          !std::is_void<typename function_traits<F>::return_type>::value,
+      try_type_t<decltype(fn(arg.Value()))>>::type {
     using type = decltype(fn(arg.Value()));
+    using return_type = typename function_traits<F>::return_type;
     return try_type_t<type>(fn(arg.Value()));
   }
 
   template <typename U, typename F, typename Arg>
   auto Invoke(F fn, Arg arg) -> typename std::enable_if<
-      IsTry<U>::value && !std::is_same<void, typename IsTry<U>::Inner>::value,
+      !IsTry<U>::value && !std::is_same<void, U>::value &&
+          std::is_void<typename function_traits<F>::return_type>::value,
+      try_type_t<decltype(fn(arg.Value()))>>::type {
+    using type = decltype(fn(arg.Value()));
+    fn(arg.Value());
+    return try_type_t<type>();
+  }
+
+  template <typename U, typename F, typename Arg>
+  auto Invoke(F fn, Arg arg) -> typename std::enable_if<
+      IsTry<U>::value && !std::is_same<void, typename IsTry<U>::Inner>::value&&
+          !std::is_void<typename function_traits<F>::return_type>::value,
       try_type_t<decltype(fn(std::move(arg)))>>::type {
     using type = decltype(fn(std::move(arg)));
     return try_type_t<type>(fn(std::move(arg)));
+  }
+
+  template <typename U, typename F, typename Arg>
+  auto Invoke(F fn, Arg arg) -> typename std::enable_if<
+      IsTry<U>::value && !std::is_same<void, typename IsTry<U>::Inner>::value&&
+      std::is_void<typename function_traits<F>::return_type>::value,
+      try_type_t<decltype(fn(std::move(arg)))>>::type {
+    using type = decltype(fn(std::move(arg)));
+    fn(std::move(arg));
+    return try_type_t<type>();
   }
 
   template <typename U, typename F, typename Arg>
@@ -189,20 +214,20 @@ private:
 namespace future_internal {
 template <typename R, typename P, typename F, typename Tuple>
 inline absl::enable_if_t<std::is_void<R>::value> SetValue(P &promise, F &&fn,
-                                                   Tuple &&tp) {
+                                                          Tuple &&tp) {
   absl::apply(fn, std::move(tp));
   promise.SetValue();
 }
 
 template <typename R, typename P, typename F, typename Tuple>
 inline absl::enable_if_t<!std::is_void<R>::value> SetValue(P &promise, F &&fn,
-                                                    Tuple &&tp) {
+                                                           Tuple &&tp) {
   promise.SetValue(absl::apply(fn, std::move(tp)));
 }
 
 template <typename Executor, typename F, typename... Args>
-Future<typename function_traits<F>::return_type>
-inline AsyncImpl(Lauch policy, Executor *ex, F &&fn, Args &&... args) {
+Future<typename function_traits<F>::return_type> inline AsyncImpl(
+    Lauch policy, Executor *ex, F &&fn, Args &&... args) {
   using R = typename function_traits<F>::return_type;
   Promise<R> promise;
   auto future = promise.GetFuture();
@@ -217,7 +242,7 @@ inline AsyncImpl(Lauch policy, Executor *ex, F &&fn, Args &&... args) {
     }
   };
 
-  assert(policy!=Lauch::Sync);
+  assert(policy != Lauch::Sync);
   if (ex) {
     assert(policy == Lauch::Pool);
     ex->submit(std::move(task));
@@ -230,23 +255,23 @@ inline AsyncImpl(Lauch policy, Executor *ex, F &&fn, Args &&... args) {
 }
 }
 
-//free function of future
+// free function of future
 template <typename F, typename... Args>
 inline Future<typename function_traits<F>::return_type> Async(F &&fn,
-                                                       Args &&... args) {
-  return future_internal::AsyncImpl(Lauch::Async, (EmptyExecutor *)nullptr, std::forward<F>(fn),
+                                                              Args &&... args) {
+  return future_internal::AsyncImpl(Lauch::Async, (EmptyExecutor *)nullptr,
+                                    std::forward<F>(fn),
                                     std::forward<Args>(args)...);
 }
 
 template <typename Executor, typename F, typename... Args>
-inline Future<typename function_traits<F>::return_type> Async(Executor *ex, F &&fn,
-                                                       Args &&... args) {
+inline Future<typename function_traits<F>::return_type>
+Async(Executor *ex, F &&fn, Args &&... args) {
   return future_internal::AsyncImpl(Lauch::Pool, ex, std::forward<F>(fn),
                                     std::forward<Args>(args)...);
 }
 
-template <typename T>
-inline Future<T> MakeReadyFuture(T &&value) {
+template <typename T> inline Future<T> MakeReadyFuture(T &&value) {
   Promise<absl::decay_t<T>> promise;
   promise.SetValue(std::forward<T>(value));
   return promise.GetFuture();
@@ -266,42 +291,41 @@ inline Future<T> MakeExceptFuture(std::exception_ptr &&e) {
   return promise.GetFuture();
 }
 
-template <typename T, typename E>
-inline Future<T> MakeExceptFuture(E &&e) {
+template <typename T, typename E> inline Future<T> MakeExceptFuture(E &&e) {
   Promise<T> promise;
   promise.SetException(std::make_exception_ptr(std::forward<E>(e)));
 
   return promise.GetFuture();
 }
 
-template<typename Iterator>
+template <typename Iterator>
 using iterator_value_t = typename std::iterator_traits<Iterator>::value_type;
 
-template<typename T>
-using future_value_t = typename IsFuture<T>::Inner;
+template <typename T> using future_value_t = typename IsFuture<T>::Inner;
 
-template<typename Iterator>
-Future<std::pair<size_t, future_value_t<iterator_value_t<Iterator>>>> WhenAny(Iterator begin, Iterator end){
+template <typename Iterator>
+Future<std::pair<size_t, future_value_t<iterator_value_t<Iterator>>>>
+WhenAny(Iterator begin, Iterator end) {
   using it_value_type = iterator_value_t<Iterator>;
   using value_t = future_value_t<it_value_type>;
 
-  if(begin==end){
-    return MakeReadyFuture<std::pair<size_t, value_t>>(std::make_pair(0, value_t()));
+  if (begin == end) {
+    return MakeReadyFuture<std::pair<size_t, value_t>>(
+        std::make_pair(0, value_t()));
   }
 
   struct AnyContext {
-    AnyContext() {};
+    AnyContext(){};
     Promise<std::pair<size_t, value_t>> pm;
     std::atomic<bool> done{false};
   };
 
   auto ctx = std::make_shared<AnyContext>();
   for (size_t i = 0; begin != end; ++begin, ++i) {
-    begin->Then([ctx, i](typename TryWrapper<value_t>::type&& t) {
+    begin->Then([ctx, i](typename TryWrapper<value_t>::type &&t) {
       if (!ctx->done.exchange(true)) {
         ctx->pm.SetValue(std::make_pair(i, std::move(t)));
       }
-      return 0;
     });
   }
 

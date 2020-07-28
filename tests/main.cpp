@@ -4,18 +4,6 @@
 
 using namespace ray;
 
-int test(int* p){
-  if(p==nullptr){
-    return -1;
-  }
-
-  if(*p==1){
-    return 1;
-  }else{
-    return -2;
-  }
-}
-
 template<typename... Args>
 inline void Print(Args&&... args) {
   (void)std::initializer_list<int>{(std::cout << std::forward<Args>(args) << ' ', 0)...};
@@ -76,9 +64,22 @@ TEST(when_any, any)
     t.join();
 }
 
-TEST(future_then, exception_then)
+TEST(future_then, then_void)
 {
-  EXPECT_EQ(test(nullptr), -1);
+  Promise<int> promise;
+  auto future = promise.GetFuture();
+//  auto f = future.Then([](Try<int> x){
+//    std::cout<<x<<'\n';
+//  });
+
+  auto f1 = future.Then([](int x){
+    std::cout<<x<<'\n';
+  });
+
+  promise.SetValue(1);
+//  int r = future.Get();
+  f1.Get();
+//  EXPECT_EQ(test(nullptr), -1);
 }
 
 int main(int argc, char **argv) {
