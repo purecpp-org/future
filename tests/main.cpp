@@ -420,13 +420,37 @@ TEST(future_wait, timeout){
     auto future = Async([]{
       std::this_thread::sleep_for(std::chrono::seconds(40));
       return 1;
-    }).Then([](int i){
-      return i+2;
     });
 
     auto status = future.WaitFor(std::chrono::seconds(1));
     EXPECT_THROW(future.Get(), std::exception);
     EXPECT_EQ(status, FutureStatus::Timeout);
+  }
+
+  {
+    auto future = Async([]{
+      std::this_thread::sleep_for(std::chrono::seconds(40));
+      return 1;
+    });
+
+    auto status = future.WaitFor(std::chrono::seconds(1));
+    EXPECT_EQ(status, FutureStatus::Timeout);
+    EXPECT_THROW(future.Then([](int i){}), std::exception);
+  }
+
+  {
+    auto future = Async([]{
+      std::this_thread::sleep_for(std::chrono::milliseconds(400));
+      return 1;
+    }).Then([](int i){
+      return i+2;
+    });
+
+    auto now = std::chrono::system_clock::now();
+    auto status = future.WaitUntil(now + std::chrono::milliseconds(200));
+    EXPECT_THROW(future.Get(), std::exception);
+    EXPECT_EQ(status, FutureStatus::Timeout);
+
   }
 }
 

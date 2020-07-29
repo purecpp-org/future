@@ -119,11 +119,12 @@ private:
       };
     } else if (shared_state_->state_ == FutureStatus::Done) {
       typename TryWrapper<T>::type t;
-      try {
-        t = std::move(shared_state_->value_);
-      } catch (const std::exception &e) {
-        t = (typename TryWrapper<T>::type)(std::current_exception());
-      }
+      t = std::move(shared_state_->value_);
+//      try {
+//        t = std::move(shared_state_->value_);
+//      } catch (const std::exception &e) {
+//        t = (typename TryWrapper<T>::type)(std::current_exception());
+//      }
       lock.unlock();
 
       ExecuteTask<FirstArg>(policy, executor, func, next_prom, std::move(t));
