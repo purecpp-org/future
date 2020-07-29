@@ -12,10 +12,24 @@
 
 namespace ray {
 
-enum class Lauch { Async, Pool, Sync };
+enum class Lauch { Async, Sync };
 
 struct EmptyExecutor {
   template <typename F> void submit(F &&fn) {}
+};
+
+template <typename E> struct ExecutorAdaptor {
+  ExecutorAdaptor(const ExecutorAdaptor &) = delete;
+  ExecutorAdaptor &operator=(const ExecutorAdaptor &) = delete;
+
+  template <typename... Args>
+  ExecutorAdaptor(Args &&... args) : ex(std::forward<Args>(args)...) {}
+
+  void submit(std::function<void()> f) {
+    ex.submit(std::move(f));
+  }
+
+  E ex;
 };
 
 template <typename T> class Future {
@@ -39,14 +53,14 @@ public:
   }
 
   template <typename F>
-  Future<typename function_traits<F>::return_type> Then(Lauch policy, F &&fn) {
+  Future<absl::result_of_t<typename std::decay<F>::type(typename TryWrapper<T>::type)>> Then(Lauch policy, F &&fn) {
     return ThenImpl(policy, (EmptyExecutor *)nullptr, std::forward<F>(fn));
   }
 
-  template <typename F, typename Executor>
-  Future<typename function_traits<F>::return_type> Then(Executor &executor,
+  template <typename F, typename Ex>
+  Future<absl::result_of_t<typename std::decay<F>::type(typename TryWrapper<T>::type)>> Then(Ex* executor,
                                                         F &&fn) {
-    return ThenImpl(Lauch::Pool, &executor, std::forward<F>(fn));
+    return ThenImpl(Lauch::Async, executor, std::forward<F>(fn));
   }
 
   T Get() {
@@ -71,8 +85,8 @@ public:
 
   template <typename Rep, typename Period>
   FutureStatus
-  Wait_for(const std::chrono::duration<Rep, Period> &timeout_duration) const {
-    return shared_state_->wait_for(timeout_duration);
+  WaitFor(const std::chrono::duration<Rep, Period> &timeout_duration) const {
+    return shared_state_->WaitFor(timeout_duration);
   }
 
   template <typename Clock, typename Duration>
@@ -84,9 +98,9 @@ public:
   void Wait() { shared_state_->Wait(); }
 
 private:
-  template <typename F, typename Executor>
+  template <typename F, typename Ex>
   Future<typename function_traits<F>::return_type>
-  ThenImpl(Lauch policy, Executor *executor, F &&fn) {
+  ThenImpl(Lauch policy, Ex *executor, F &&fn) {
     static_assert(function_traits<F>::arity <= 1,
                   "Then must take zero or one argument");
     using FirstArg = typename function_traits<F>::first_arg_t;
@@ -134,10 +148,14 @@ private:
         next_prom->SetException(std::current_exception());
       }
     };
+
+    if(executor){
+      executor->submit(std::move(task));
+      return;
+    }
+
     if (policy == Lauch::Async) {
       Async(std::move(task));
-    } else if (policy == Lauch::Pool) {
-      executor->submit(std::move(task));
     } else {
       task();
     }
@@ -180,7 +198,7 @@ private:
 
   template <typename U, typename F, typename Arg>
   auto Invoke(F fn, Arg arg) -> typename std::enable_if<
-      IsTry<U>::value && !std::is_same<void, typename IsTry<U>::Inner>::value&&
+      IsTry<U>::value && !std::is_same<void, typename IsTry<U>::Inner>::value &&
           !std::is_void<typename function_traits<F>::return_type>::value,
       try_type_t<decltype(fn(std::move(arg)))>>::type {
     using type = decltype(fn(std::move(arg)));
@@ -189,8 +207,8 @@ private:
 
   template <typename U, typename F, typename Arg>
   auto Invoke(F fn, Arg arg) -> typename std::enable_if<
-      IsTry<U>::value && !std::is_same<void, typename IsTry<U>::Inner>::value&&
-      std::is_void<typename function_traits<F>::return_type>::value,
+      IsTry<U>::value && !std::is_same<void, typename IsTry<U>::Inner>::value &&
+          std::is_void<typename function_traits<F>::return_type>::value,
       try_type_t<decltype(fn(std::move(arg)))>>::type {
     using type = decltype(fn(std::move(arg)));
     fn(std::move(arg));
@@ -199,8 +217,8 @@ private:
 
   template <typename U, typename F, typename Arg>
   auto Invoke(F fn, Arg arg) -> typename std::enable_if<
-      IsTry<U>::value && std::is_same<void, typename IsTry<U>::Inner>::value&&
-                         std::is_void<typename function_traits<F>::return_type>::value,
+      IsTry<U>::value && std::is_same<void, typename IsTry<U>::Inner>::value &&
+          std::is_void<typename function_traits<F>::return_type>::value,
       try_type_t<decltype(fn(std::move(arg)))>>::type {
     using type = decltype(fn(std::move(arg)));
     fn(std::move(arg));
@@ -209,8 +227,8 @@ private:
 
   template <typename U, typename F, typename Arg>
   auto Invoke(F fn, Arg arg) -> typename std::enable_if<
-      IsTry<U>::value && std::is_same<void, typename IsTry<U>::Inner>::value&&
-      !std::is_void<typename function_traits<F>::return_type>::value,
+      IsTry<U>::value && std::is_same<void, typename IsTry<U>::Inner>::value &&
+          !std::is_void<typename function_traits<F>::return_type>::value,
       try_type_t<decltype(fn(std::move(arg)))>>::type {
     using type = decltype(fn(std::move(arg)));
     return try_type_t<type>(fn(std::move(arg)));
@@ -242,9 +260,9 @@ inline absl::enable_if_t<!std::is_void<R>::value> SetValue(P &promise, F &&fn,
   promise.SetValue(absl::apply(fn, std::move(tp)));
 }
 
-template <typename Executor, typename F, typename... Args>
+template <typename F, typename Ex, typename... Args>
 Future<typename function_traits<F>::return_type> inline AsyncImpl(
-    Lauch policy, Executor *ex, F &&fn, Args &&... args) {
+    Lauch policy, Ex *ex, F &&fn, Args &&... args) {
   using R = typename function_traits<F>::return_type;
   Promise<R> promise;
   auto future = promise.GetFuture();
@@ -261,7 +279,6 @@ Future<typename function_traits<F>::return_type> inline AsyncImpl(
 
   assert(policy != Lauch::Sync);
   if (ex) {
-    assert(policy == Lauch::Pool);
     ex->submit(std::move(task));
   } else {
     std::thread thd(std::move(task));
@@ -274,17 +291,18 @@ Future<typename function_traits<F>::return_type> inline AsyncImpl(
 
 // free function of future
 template <typename F, typename... Args>
-inline Future<typename function_traits<F>::return_type> Async(F &&fn,
-                                                              Args &&... args) {
-  return future_internal::AsyncImpl(Lauch::Async, (EmptyExecutor *)nullptr,
-                                    std::forward<F>(fn),
+inline Future<
+    absl::result_of_t<typename std::decay<F>::type(absl::decay_t<Args>...)>>
+Async(F &&fn, Args &&... args) {
+  return future_internal::AsyncImpl(Lauch::Async, (EmptyExecutor*)nullptr, std::forward<F>(fn),
                                     std::forward<Args>(args)...);
 }
 
-template <typename Executor, typename F, typename... Args>
-inline Future<typename function_traits<F>::return_type>
-Async(Executor *ex, F &&fn, Args &&... args) {
-  return future_internal::AsyncImpl(Lauch::Pool, ex, std::forward<F>(fn),
+template <typename F, typename Ex, typename... Args>
+inline Future<
+    absl::result_of_t<typename std::decay<F>::type(absl::decay_t<Args>...)>>
+Async(Ex *ex, F &&fn, Args &&... args) {
+  return future_internal::AsyncImpl(Lauch::Async, ex, std::forward<F>(fn),
                                     std::forward<Args>(args)...);
 }
 
@@ -320,8 +338,8 @@ using iterator_value_t = typename std::iterator_traits<Iterator>::value_type;
 
 template <typename T> using future_value_t = typename IsFuture<T>::Inner;
 
-template <typename Iterator> inline
-Future<std::pair<size_t, future_value_t<iterator_value_t<Iterator>>>>
+template <typename Iterator>
+inline Future<std::pair<size_t, future_value_t<iterator_value_t<Iterator>>>>
 WhenAny(Iterator begin, Iterator end) {
   using it_value_type = iterator_value_t<Iterator>;
   using value_t = future_value_t<it_value_type>;
@@ -348,9 +366,9 @@ WhenAny(Iterator begin, Iterator end) {
   return ctx->pm.GetFuture();
 }
 
-template <typename Iterator> inline
-Future<std::vector<future_value_t<iterator_value_t<Iterator>>>>
-WhenAll(Iterator begin, Iterator end){
+template <typename Iterator>
+inline Future<std::vector<future_value_t<iterator_value_t<Iterator>>>>
+WhenAll(Iterator begin, Iterator end) {
   using it_value_type = iterator_value_t<Iterator>;
   using value_t = future_value_t<it_value_type>;
 
@@ -369,7 +387,7 @@ WhenAll(Iterator begin, Iterator end){
   auto ctx = std::make_shared<AllContext>(std::distance(begin, end));
 
   for (size_t i = 0; begin != end; ++begin, ++i) {
-    begin->Then([ctx, i](typename TryWrapper<value_t>::type&& t) {
+    begin->Then([ctx, i](typename TryWrapper<value_t>::type &&t) {
       std::unique_lock<std::mutex> lock(ctx->mtx);
       ctx->results[i] = std::move(t);
       ctx->count++;
@@ -384,7 +402,8 @@ WhenAll(Iterator begin, Iterator end){
 
 namespace internal {
 template <typename... F>
-class WhenAllContext : public std::enable_shared_from_this<WhenAllContext<F...>> {
+class WhenAllContext
+    : public std::enable_shared_from_this<WhenAllContext<F...>> {
 public:
   template <typename T, typename I> void operator()(T &&f, I i) {
     using value_t =
@@ -400,29 +419,33 @@ public:
     });
   }
 
-  template<typename Tuple>
-  void for_each(Tuple&& tp){
-    for_each_tp(std::move(tp), *this, absl::make_index_sequence<sizeof...(F)>{});
+  template <typename Tuple> void for_each(Tuple &&tp) {
+    for_each_tp(std::move(tp), *this,
+                absl::make_index_sequence<sizeof...(F)>{});
   }
 
-  Future<std::tuple<typename TryWrapper<typename absl::decay_t<F>::InnerType>::type...>>
+  Future<std::tuple<
+      typename TryWrapper<typename absl::decay_t<F>::InnerType>::type...>>
   GetFuture() {
-//    std::unique_lock<std::mutex> lock(mtx_);
+    //    std::unique_lock<std::mutex> lock(mtx_);
     return pm_.GetFuture();
   }
 
 private:
-  Promise<std::tuple<typename TryWrapper<typename absl::decay_t<F>::InnerType>::type...>> pm_;
-  std::tuple<typename TryWrapper<typename absl::decay_t<F>::InnerType>::type...> results_;
+  Promise<std::tuple<
+      typename TryWrapper<typename absl::decay_t<F>::InnerType>::type...>>
+      pm_;
+  std::tuple<typename TryWrapper<typename absl::decay_t<F>::InnerType>::type...>
+      results_;
   std::mutex mtx_;
   size_t count_ = 0;
 };
 }
 
-template<typename... F>
-Future<std::tuple<Try<typename absl::decay_t<F>::InnerType>...>> WhenAll(F&&... futures)
-{
-  static_assert(sizeof...(F)>0, "at least one argument");
+template <typename... F>
+Future<std::tuple<Try<typename absl::decay_t<F>::InnerType>...>>
+WhenAll(F &&... futures) {
+  static_assert(sizeof...(F) > 0, "at least one argument");
   auto ctx = std::make_shared<internal::WhenAllContext<F...>>();
   ctx->for_each(std::forward_as_tuple(std::forward<F>(futures)...));
   return ctx->GetFuture();

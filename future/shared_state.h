@@ -27,22 +27,26 @@ template <typename T> struct SharedState {
 
   template <typename Rep, typename Period>
   FutureStatus
-  WaitFor(const std::chrono::duration<Rep, Period> &timeout_duration) const {
+  WaitFor(const std::chrono::duration<Rep, Period> &timeout_duration)  {
     std::unique_lock<std::mutex> lock(then_mtx_);
-    return cond_var_.wait_for(lock, timeout_duration,
-                              [this]() { return state_ != FutureStatus::None; })
-           ? state_
-           : FutureStatus::Timeout;
+    bool r = cond_var_.wait_for(lock, timeout_duration,
+                              [this]() { return state_ != FutureStatus::None; });
+    if(!r){
+      state_ = FutureStatus::Timeout;
+    }
+    return state_;
   }
 
   template <typename Clock, typename Duration>
   FutureStatus WaitUntil(
-      const std::chrono::time_point<Clock, Duration> &timeout_time) const {
+      const std::chrono::time_point<Clock, Duration> &timeout_time)  {
     std::unique_lock<std::mutex> lock(then_mtx_);
-    return cond_var_.wait_until(lock, timeout_time,
-                                [this]() { return state_ != FutureStatus::None; })
-           ? state_
-           : FutureStatus::Timeout;
+    bool r = cond_var_.wait_until(lock, timeout_time,
+                                [this]() { return state_ != FutureStatus::None; });
+    if(!r){
+      state_ = FutureStatus::Timeout;
+    }
+    return state_;
   }
 
   std::mutex then_mtx_;

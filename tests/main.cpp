@@ -1,5 +1,10 @@
 #include <iostream>
 #include <gtest/gtest.h>
+#include <boost/thread.hpp>
+#include <boost/thread/executor.hpp>
+#include <boost/thread/executors/basic_thread_pool.hpp>
+#include <boost/thread/future.hpp>
+
 #include "../future/future.h"
 
 using namespace ray;
@@ -31,7 +36,12 @@ TEST(future_then, basic_then)
 
 TEST(future_then, async_then)
 {
-  auto future = Async([]{return 2;}).Then([](int x){return x+2;}).Then([](int x){ return x+2; });
+  auto future = Async([]{return 2;}).Then([](int x){
+    return x+2;
+  }).Then([](int x){
+    return x+2;
+  });
+
   EXPECT_EQ(future.Get(), 6);
 }
 
@@ -311,6 +321,151 @@ TEST(when_all_any, check_arguments){
     auto pair = future.Get();
     EXPECT_EQ(pair.first, 0);
     EXPECT_EQ(pair.second, 0);
+  }
+}
+
+TEST(future_then, sync_then){
+  auto future = MakeReadyFuture(std::this_thread::get_id());
+  auto f = future.Then(Lauch::Sync, [](std::thread::id id){
+    return id==std::this_thread::get_id();
+  });
+
+  EXPECT_TRUE(f.Get());
+}
+
+TEST(future_then_pool, async_pool){
+  boost::basic_thread_pool pool(4);
+  auto future = Async(&pool, []{
+    return 42;
+  });
+
+  EXPECT_EQ(future.Get(), 42);
+}
+
+TEST(future_then_pool, then_pool){
+  boost::basic_thread_pool pool(4);
+  auto future = Async(&pool, []{
+    return 42;
+  });
+
+  auto f = future.Then(&pool, [](int i){
+    return i+2;
+  }).Then(&pool, [](int i){
+    return i +2;
+  }).Then([](int i){
+    return i+2;
+  });
+
+  EXPECT_EQ(f.Get(), 48);
+}
+
+TEST(future_then_pool, adaptor_pool){
+  ExecutorAdaptor<boost::basic_thread_pool> ex(4);
+
+  auto future = Async(&ex, []{
+    return 42;
+  }).Then(&ex, [](int i){
+    return i+2;
+  });
+
+  EXPECT_EQ(future.Get(), 44);
+
+  EmptyExecutor empty_executor;
+  int val = 0;
+  empty_executor.submit([&val]{
+    val++;
+  });
+  EXPECT_EQ(val, 0);
+}
+
+TEST(future_then_policy, lauch){
+  auto future = Async([]{return 42;});
+  auto f = future.Then(Lauch::Sync, [](int i){
+    return i+2;
+  });
+
+  EXPECT_EQ(f.Get(), 44);
+
+  {
+    auto future = Async([]{return 42;});
+    auto f = future.Then(Lauch::Async, [](int i){
+      return i+2;
+    });
+
+    EXPECT_EQ(f.Get(), 44);
+  }
+
+  {
+    auto future = Async([]{return 42;});
+    int bad_policy = 3;
+    auto f = future.Then((Lauch)bad_policy, [](int i){
+      return i+2;
+    });
+
+    EXPECT_EQ(f.Get(), 44);
+  }
+}
+
+TEST(future_wait, timeout){
+  auto future = Async([]{
+    std::this_thread::sleep_for(std::chrono::seconds(40));
+    return 1;
+  });
+
+  auto status = future.WaitFor(std::chrono::seconds(1));
+  EXPECT_EQ(status, FutureStatus::Timeout);
+  EXPECT_THROW(future.Get(), std::exception);
+
+  {
+    auto future = Async([]{
+      std::this_thread::sleep_for(std::chrono::seconds(40));
+      return 1;
+    }).Then([](int i){
+      return i+2;
+    });
+
+    auto status = future.WaitFor(std::chrono::seconds(1));
+    EXPECT_THROW(future.Get(), std::exception);
+    EXPECT_EQ(status, FutureStatus::Timeout);
+  }
+}
+
+TEST(future_wait, not_timeout){
+  auto future = Async([]{
+    std::this_thread::sleep_for(std::chrono::milliseconds (100));
+    return 1;
+  });
+
+  auto status = future.WaitFor(std::chrono::milliseconds(200));
+  EXPECT_EQ(status, FutureStatus::Done);
+  EXPECT_EQ(future.Get(), 1);
+
+  {
+    auto future = Async([]{
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      return 1;
+    }).Then([](int i){
+      return i+2;
+    });
+
+    auto status = future.WaitFor(std::chrono::milliseconds(200));
+    EXPECT_EQ(future.Get(), 3);
+    EXPECT_EQ(status, FutureStatus::Done);
+  }
+
+  {
+    auto future = Async([]{
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      return 1;
+    }).Then([](int i){
+      return i+2;
+    });
+
+    auto now = std::chrono::system_clock::now();
+    auto status = future.WaitUntil(now + std::chrono::milliseconds(200));
+    EXPECT_EQ(future.Get(), 3);
+    EXPECT_EQ(status, FutureStatus::Done);
+
   }
 }
 
