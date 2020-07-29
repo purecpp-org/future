@@ -59,6 +59,7 @@ public:
         throw std::runtime_error("timeout");
       case FutureStatus::Done:
         shared_state_->state_ = FutureStatus::Retrived;
+        return GetImpl<T>();
       default:
         throw std::runtime_error("already retrieved");
       }
@@ -370,9 +371,9 @@ WhenAll(Iterator begin, Iterator end){
   for (size_t i = 0; begin != end; ++begin, ++i) {
     begin->Then([ctx, i](typename TryWrapper<value_t>::type&& t) {
       std::unique_lock<std::mutex> lock(ctx->mtx);
-      ctx->count++;
       ctx->results[i] = std::move(t);
-      if (ctx->results.size() - 1 == ctx->count) {
+      ctx->count++;
+      if (ctx->results.size() == ctx->count) {
         ctx->pm.SetValue(std::move(ctx->results));
       }
     });
@@ -383,7 +384,7 @@ WhenAll(Iterator begin, Iterator end){
 
 namespace internal {
 template <typename... F>
-class WhenAllContext : std::enable_shared_from_this<WhenAllContext<F...>> {
+class WhenAllContext : public std::enable_shared_from_this<WhenAllContext<F...>> {
 public:
   template <typename T, typename I> void operator()(T &&f, I i) {
     using value_t =
@@ -403,14 +404,19 @@ public:
     });
   }
 
-  Future<std::tuple<typename TryWrapper<typename F::InnerType>::type...>>
+  template<typename Tuple>
+  void for_each(Tuple&& tp){
+    for_each_tp(std::move(tp), *this, absl::make_index_sequence<sizeof...(F)>{});
+  }
+
+  Future<std::tuple<typename TryWrapper<typename absl::decay_t<F>::InnerType>::type...>>
   GetFuture() {
     return pm_.GetFuture();
   }
 
 private:
-  Promise<std::tuple<typename TryWrapper<typename F::InnerType>::type...>> pm_;
-  std::tuple<typename TryWrapper<typename F::InnerType>::type...> results_;
+  Promise<std::tuple<typename TryWrapper<typename absl::decay_t<F>::InnerType>::type...>> pm_;
+  std::tuple<typename TryWrapper<typename absl::decay_t<F>::InnerType>::type...> results_;
   std::mutex mtx_;
 };
 }
@@ -418,9 +424,10 @@ private:
 template<typename... F>
 Future<std::tuple<Try<typename absl::decay_t<F>::InnerType>...>> WhenAll(F&&... futures)
 {
-  auto ctx = std::make_shared<internal::WhenAllContext<absl::decay_t<F>...>>();
-
-  for_each_tp(std::forward_as_tuple(std::forward<F>(futures)...), *ctx, absl::make_index_sequence<sizeof...(F)>{});
+  auto ctx = std::make_shared<internal::WhenAllContext<F...>>();
+  auto self = ctx->shared_from_this();
+  ctx->for_each(std::forward_as_tuple(std::forward<F>(futures)...));
+//  for_each_tp(std::forward_as_tuple(std::forward<F>(futures)...), *ctx, absl::make_index_sequence<sizeof...(F)>{});
 
   return ctx->GetFuture();
 }
