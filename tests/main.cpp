@@ -1,10 +1,6 @@
 #include <iostream>
 #include <gtest/gtest.h>
-#include <boost/thread.hpp>
-#include <boost/thread/executor.hpp>
 #include <boost/thread/executors/basic_thread_pool.hpp>
-#include <boost/thread/future.hpp>
-
 #include "../future/future.h"
 
 using namespace ray;
