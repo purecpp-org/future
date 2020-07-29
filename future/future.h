@@ -422,6 +422,7 @@ private:
 template<typename... F>
 Future<std::tuple<Try<typename absl::decay_t<F>::InnerType>...>> WhenAll(F&&... futures)
 {
+  static_assert(sizeof...(F)>0, "at least one argument");
   auto ctx = std::make_shared<internal::WhenAllContext<F...>>();
   ctx->for_each(std::forward_as_tuple(std::forward<F>(futures)...));
   return ctx->GetFuture();

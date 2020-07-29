@@ -251,7 +251,6 @@ TEST(when_all, when_all_variadic_get){
 
   auto f1 = p1.GetFuture();
   auto f2 = p2.GetFuture();
-
   auto future = WhenAll(f1, f2);
   p1.SetValue(42);
   p2.SetValue();
@@ -295,6 +294,24 @@ TEST(ready_future, make_ready){
   Future<void> vfuture = MakeReadyFuture();
   EXPECT_TRUE(vfuture.Valid());
   EXPECT_TRUE(std::is_void<decltype(vfuture.Get())>::value);
+}
+
+TEST(when_all_any, check_arguments){
+  Promise<int> p1;
+  Promise<int> p2;
+  std::vector<Future<int> > futures;
+  futures.emplace_back(p1.GetFuture());
+  futures.emplace_back(p2.GetFuture());
+
+  auto future = WhenAll(futures.begin(), futures.begin());
+  EXPECT_TRUE(future.Get().empty());
+
+  {
+    auto future = WhenAny(futures.begin(), futures.begin());
+    auto pair = future.Get();
+    EXPECT_EQ(pair.first, 0);
+    EXPECT_EQ(pair.second, 0);
+  }
 }
 
 int main(int argc, char **argv) {
