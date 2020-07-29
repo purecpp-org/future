@@ -210,6 +210,7 @@ TEST(when_all, when_all_variadic){
   p2.SetValue();
 
   auto f = future.Then([](Try<std::tuple<Try<int>, Try<void>>>&& t){
+    assert(std::get<0>(t.Value()).HasValue());
     auto result = t.Value();
     auto& r1 = std::get<0>(result);
     auto& r2 = std::get<1>(result);
@@ -242,6 +243,27 @@ TEST(when_all, when_all_variadic_same){
   });
 
   f.Get();
+}
+
+TEST(when_all, when_all_variadic_get){
+  Promise<int> p1;
+  Promise<void> p2;
+
+  auto f1 = p1.GetFuture();
+  auto f2 = p2.GetFuture();
+
+  auto future = WhenAll(f1, f2);
+  p1.SetValue(42);
+  p2.SetValue();
+
+  auto result = future.Get();
+  assert(std::get<0>(future.Get()).HasValue());
+  assert(std::get<0>(result).HasValue());
+  auto& r1 = std::get<0>(result);
+  auto& r2 = std::get<1>(result);
+
+  EXPECT_EQ(r1.Value(), 42);
+  EXPECT_TRUE(r1.HasValue());
 }
 
 int main(int argc, char **argv) {

@@ -391,12 +391,10 @@ public:
         typename TryWrapper<typename absl::decay_t<T>::InnerType>::type;
     auto self = this->shared_from_this();
     f.Then([i, self, this](value_t &&t) {
-      constexpr size_t Index = decltype(i)::value;
-
       std::unique_lock<std::mutex> lock(mtx_);
+      count_++;
       std::get<decltype(i)::value>(results_) = std::move(t);
-
-      if (Index == sizeof...(F) - 1) {
+      if (count_ == sizeof...(F)) {
         pm_.SetValue(std::move(results_));
       }
     });
@@ -409,6 +407,7 @@ public:
 
   Future<std::tuple<typename TryWrapper<typename absl::decay_t<F>::InnerType>::type...>>
   GetFuture() {
+//    std::unique_lock<std::mutex> lock(mtx_);
     return pm_.GetFuture();
   }
 
@@ -416,6 +415,7 @@ private:
   Promise<std::tuple<typename TryWrapper<typename absl::decay_t<F>::InnerType>::type...>> pm_;
   std::tuple<typename TryWrapper<typename absl::decay_t<F>::InnerType>::type...> results_;
   std::mutex mtx_;
+  size_t count_ = 0;
 };
 }
 
