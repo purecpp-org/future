@@ -266,6 +266,37 @@ TEST(when_all, when_all_variadic_get){
   EXPECT_TRUE(r1.HasValue());
 }
 
+TEST(try_get, try_get_val){
+  Try<int> t;
+  EXPECT_THROW(t.Value(), std::exception);
+
+  Try<void> t1;
+  EXPECT_TRUE(t1.HasValue());
+  EXPECT_FALSE(t1.HasException());
+
+  Try<void> t2({std::exception_ptr()});
+  EXPECT_TRUE(t2.HasException());
+  EXPECT_FALSE(t2.HasValue());
+}
+
+TEST(promise_set, set_val){
+  Promise<int> promise;
+  auto future = promise.GetFuture();
+  promise.SetValue(1);
+  promise.SetValue(2);
+  EXPECT_EQ(future.Get(), 1);
+}
+
+TEST(ready_future, make_ready){
+  Future<int> future = MakeReadyFuture(2);
+  EXPECT_EQ(future.Get(), 2);
+  EXPECT_TRUE(future.Valid());
+
+  Future<void> vfuture = MakeReadyFuture();
+  EXPECT_TRUE(vfuture.Valid());
+  EXPECT_TRUE(std::is_void<decltype(vfuture.Get())>::value);
+}
+
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
