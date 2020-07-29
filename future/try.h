@@ -52,9 +52,15 @@ public:
 #endif
   }
 
-  operator const T &() const & { return Value(); }
-  operator T &() & { return Value(); }
-  operator T &&() && { return std::move(Value()); }
+  operator const T &() const & {
+    return Value();
+  }
+  operator T &() & {
+    return Value();
+  }
+  operator T &&() && {
+    return std::move(Value());
+  }
 
   T &Value() & {
     Check();

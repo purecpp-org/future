@@ -149,32 +149,6 @@ TEST(future_exception, value_exception){
   EXPECT_THROW(f.Get(), std::exception);
 }
 
-TEST(when_all, when_all){
-  std::vector<std::thread> threads;
-  std::vector<Promise<int> > pmv(8);
-  for (auto& pm : pmv) {
-    std::thread t([&pm]{
-      static int val = 10;
-      std::this_thread::sleep_for(std::chrono::milliseconds(100));
-      pm.SetValue(val++);
-    });
-    threads.emplace_back(std::move(t));
-  }
-
-  std::vector<Future<int> > futures;
-  for (auto& pm : pmv) {
-    futures.emplace_back(pm.GetFuture());
-  }
-
-  auto fall = WhenAll(std::begin(futures), std::end(futures));
-  fall.Then([]( Try<std::vector<int>> result) {
-    EXPECT_EQ(result.Value().size(), 8);
-  });
-
-  for (auto& t : threads)
-    t.join();
-}
-
 TEST(when_all, when_all_vector){
   Promise<int> p1;
   Promise<int> p2;
@@ -197,6 +171,33 @@ TEST(when_all, when_all_vector){
   }
 }
 
+std::atomic<int> g_val = {0};
+TEST(when_all, when_all_in_thread){
+  std::vector<std::thread> threads;
+  std::vector<Promise<int> > pmv(8);
+  for (auto& pm : pmv) {
+    std::thread t([&pm]{
+      g_val++;
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      pm.SetValue(g_val);
+    });
+    threads.emplace_back(std::move(t));
+  }
+
+  std::vector<Future<int> > futures;
+  for (auto& pm : pmv) {
+    futures.emplace_back(pm.GetFuture());
+  }
+
+  auto fall = WhenAll(std::begin(futures), std::end(futures));
+  fall.Then([]( Try<std::vector<int>> result) {
+    EXPECT_EQ(result.Value().size(), 8);
+  });
+
+  for (auto& t : threads)
+    t.join();
+}
+
 TEST(when_all, when_all_variadic){
   Promise<int> p1;
   Promise<void> p2;
@@ -208,12 +209,16 @@ TEST(when_all, when_all_variadic){
   p1.SetValue(42);
   p2.SetValue();
 
-  auto result = future.Get();
-  auto& r1 = std::get<0>(result);
-  auto& r2 = std::get<1>(result);
+  auto f = future.Then([](Try<std::tuple<Try<int>, Try<void>>>&& t){
+    auto result = t.Value();
+    auto& r1 = std::get<0>(result);
+    auto& r2 = std::get<1>(result);
 
-  EXPECT_EQ(r1.Value(), 42);
-  EXPECT_TRUE(r1.HasValue());
+    EXPECT_EQ(r1.Value(), 42);
+    EXPECT_TRUE(r1.HasValue());
+  });
+
+  f.Get();
 }
 
 TEST(when_all, when_all_variadic_same){
@@ -227,12 +232,16 @@ TEST(when_all, when_all_variadic_same){
   p1.SetValue(42);
   p2.SetValue(21);
 
-  auto result = future.Get();
-  auto& r1 = std::get<0>(result);
-  auto& r2 = std::get<1>(result);
+  auto f = future.Then([](Try<std::tuple<Try<int>, Try<int>>>&& t){
+    auto result = t.Value();
+    auto r1 = std::get<0>(result);
+    auto r2 = std::get<1>(result);
 
-  EXPECT_EQ(r1.Value(), 42);
-  EXPECT_EQ(r2.Value(), 21);
+    EXPECT_EQ(r1.Value(), 42);
+    EXPECT_EQ(r2.Value(), 21);
+  });
+
+  f.Get();
 }
 
 int main(int argc, char **argv) {

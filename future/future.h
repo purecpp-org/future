@@ -147,7 +147,7 @@ private:
 
   template <typename R>
   absl::enable_if_t<!std::is_void<R>::value, T> GetImpl() {
-    return shared_state_->value_.Value();
+    return std::move(shared_state_->value_.Value());
   }
 
   template <typename R, typename U, typename F, typename Arg>
@@ -393,10 +393,8 @@ public:
     f.Then([i, self, this](value_t &&t) {
       constexpr size_t Index = decltype(i)::value;
 
-      {
-        std::unique_lock<std::mutex> lock(mtx_);
-        std::get<decltype(i)::value>(results_) = std::move(t);
-      }
+      std::unique_lock<std::mutex> lock(mtx_);
+      std::get<decltype(i)::value>(results_) = std::move(t);
 
       if (Index == sizeof...(F) - 1) {
         pm_.SetValue(std::move(results_));
@@ -425,10 +423,7 @@ template<typename... F>
 Future<std::tuple<Try<typename absl::decay_t<F>::InnerType>...>> WhenAll(F&&... futures)
 {
   auto ctx = std::make_shared<internal::WhenAllContext<F...>>();
-  auto self = ctx->shared_from_this();
   ctx->for_each(std::forward_as_tuple(std::forward<F>(futures)...));
-//  for_each_tp(std::forward_as_tuple(std::forward<F>(futures)...), *ctx, absl::make_index_sequence<sizeof...(F)>{});
-
   return ctx->GetFuture();
 }
 }
