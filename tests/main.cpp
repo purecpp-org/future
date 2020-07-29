@@ -150,8 +150,6 @@ TEST(future_exception, value_exception){
   auto f = future.Then([](int x){
     throw std::runtime_error("error");
     return x+2;
-  }).Then([](int y){
-    return y+2;
   });
 
   promise.SetValue(1);
@@ -169,16 +167,12 @@ TEST(when_all, when_all_vector){
   auto future = WhenAll(futures.begin(), futures.end());
   p1.SetValue(42);
   p2.SetValue(21);
-  try {
-    auto result = future.Get();
-    auto& r1 = result[0];
-    auto& r2 = result[1];
+  auto result = future.Get();
+  auto& r1 = result[0];
+  auto& r2 = result[1];
 
-    EXPECT_EQ(r1, 42);
-    EXPECT_EQ(r2, 21);
-  }catch(std::exception& e){
-    Print(e.what());
-  }
+  EXPECT_EQ(r1, 42);
+  EXPECT_EQ(r2, 21);
 }
 
 std::atomic<int> g_val = {0};
