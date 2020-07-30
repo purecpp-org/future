@@ -383,3 +383,11 @@ WhenAll除了支持容器之外，还支持了变参，即可以传入任意个�
 1. 支持更多的异步操作函数；
 2. 支持构建future表达式和图
 3. 支持协程
+
+# 参考资料
+
+1. [boost.future](https://www.boost.org/doc/libs/1_73_0/doc/html/thread/synchronization.html#thread.synchronization.futures.then)
+2. [folly.future](https://github.com/facebook/folly)
+3. [advance future](http://www.home.hs-karlsruhe.de/~suma0002/publications/advanced-futures-promises-cpp.pdf)
+4. [Continuable](https://meetingcpp.com/mcpp/slides/2018/Continuable.pdf)
+5. [ananas.future](https://github.com/loveyacper/ananas/tree/master/future)
