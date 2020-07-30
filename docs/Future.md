@@ -9,7 +9,7 @@
 * [获取future值](#获取future值)
 * [线程策略](#线程策略)
 * [异常处理](#异常处理)
-* [WhenAll/WhenAny](#WhenAll/WhenAny)
+* [WhenAll](#WhenAll)
 * [RoadMap](#RoadMap)
 
 # 背景和动机
@@ -346,7 +346,7 @@ template <typename E> struct ExecutorAdaptor {
 ```
 代码3-2没有通过Try对象来捕获异常，所以需要在外面try-catch，后面的Then异步调用不会执行。
 
-# WhenAll/WhenAny
+# WhenAll
 
 WhenAll除了支持容器之外，还支持了变参，即可以传入任意个类型不同的future。
 
