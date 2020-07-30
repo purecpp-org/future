@@ -141,7 +141,6 @@ private:
                    typename TryWrapper<T>::type &&t) {
     auto arg = MakeMoveWrapper(std::move(t));
     auto task = [func, arg, next_prom, this]() mutable {
-      using R = typename function_traits<F>::return_type;
       try {
         auto result = Invoke<FirstArg>(func.move(), arg.move());
         next_prom->SetValue(std::move(result));
@@ -183,7 +182,6 @@ private:
           !std::is_void<typename function_traits<F>::return_type>::value,
       try_type_t<decltype(fn(arg.Value()))>>::type {
     using type = decltype(fn(arg.Value()));
-    using return_type = typename function_traits<F>::return_type;
     return try_type_t<type>(fn(arg.Value()));
   }
 
@@ -410,7 +408,7 @@ public:
     using value_t =
         typename TryWrapper<typename absl::decay_t<T>::InnerType>::type;
     auto self = this->shared_from_this();
-    f.Then([i, self, this](value_t &&t) {
+    f.Then([self, this](value_t &&t) {
       std::unique_lock<std::mutex> lock(mtx_);
       count_++;
       std::get<decltype(i)::value>(results_) = std::move(t);

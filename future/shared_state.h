@@ -8,7 +8,6 @@
 #include <mutex>
 #include <thread>
 #include <type_traits>
-#include <atomic>
 
 namespace ray{
 enum class FutureStatus { None, Timeout, Done, Retrived };

@@ -10,8 +10,8 @@
 #include <cassert>
 #include <type_traits>
 #if __cplusplus <= 201402L
-#include <absl/types/variant.h>
-#include <absl/meta/type_traits.h>
+#include "absl/types/variant.h"
+#include "absl/meta/type_traits.h"
 #else
 #include <variant>
 #endif

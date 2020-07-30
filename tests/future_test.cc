@@ -1,7 +1,7 @@
 #include <iostream>
 #include <gtest/gtest.h>
 #include <boost/thread/executors/basic_thread_pool.hpp>
-#include "../future/future.h"
+#include <future/future.h>
 
 using namespace ray;
 
@@ -264,7 +264,7 @@ TEST(when_all, when_all_variadic){
     auto& r2 = std::get<1>(result);
 
     EXPECT_EQ(r1.Value(), 42);
-    EXPECT_TRUE(r1.HasValue());
+    EXPECT_TRUE(r2.HasValue());
   });
 
   f.Get();
@@ -310,7 +310,7 @@ TEST(when_all, when_all_variadic_get){
   auto& r2 = std::get<1>(result);
 
   EXPECT_EQ(r1.Value(), 42);
-  EXPECT_TRUE(r1.HasValue());
+  EXPECT_TRUE(r2.HasValue());
 }
 
 TEST(try_get, try_get_val){
