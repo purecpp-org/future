@@ -28,6 +28,6 @@ link_directories(
 #add_subdirectory(3rd_party/abseil-cpp)
 #add_subdirectory(3rd_party/googletest)
 
-add_executable(future_demo tests/main.cpp)
+add_executable(future_demo tests/future_test.cc)
 
 target_link_libraries(future_demo boost_thread gtest pthread -labsl_bad_variant_access )
