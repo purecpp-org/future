@@ -69,6 +69,40 @@ TEST(when_any, any)
     t.join();
 }
 
+TEST(when_any, any_async){
+  std::vector<Future<int> > futures;
+  futures.emplace_back(Async([]{return 42;}));
+  futures.emplace_back(Async([]{return 21;}));
+
+  auto future = WhenAny(futures.begin(), futures.end());
+  std::pair<size_t, int> result = future.Get();
+  auto which_one = result.first;
+  auto value = result.second;
+
+  EXPECT_TRUE((which_one == 0) || (which_one == 1));
+  EXPECT_TRUE((value == 42) || (value == 21));
+}
+
+int GetVal(int i){
+  return i + 2;
+}
+
+TEST(future, create){
+  Future<int> f1 = Async([]{return 42;});
+  EXPECT_EQ(f1.Get(), 42);
+
+  Future<int> f2 = Async([](int i){return i + 2; }, 42);
+  EXPECT_EQ(f2.Get(), 44);
+
+  Future<int> f3 = Async(&GetVal, 42);
+  EXPECT_EQ(f3.Get(), 44);
+
+  Promise<int> promise;
+  Future<int> future = promise.GetFuture();
+  promise.SetValue(42);
+  EXPECT_EQ(future.Get(), 42);
+}
+
 TEST(future_then, then_void)
 {
   Promise<int> promise;
@@ -166,6 +200,20 @@ TEST(when_all, when_all_vector){
   auto result = future.Get();
   auto& r1 = result[0];
   auto& r2 = result[1];
+
+  EXPECT_EQ(r1, 42);
+  EXPECT_EQ(r2, 21);
+}
+
+TEST(when_all, when_all_async){
+  std::vector<Future<int> > futures;
+  futures.emplace_back(Async([]{return 42;}));
+  futures.emplace_back(Async([]{return 21;}));
+
+  auto future = WhenAll(futures.begin(), futures.end());
+  std::vector<int> result = future.Get();
+  auto r1 = result[0];
+  auto r2 = result[1];
 
   EXPECT_EQ(r1, 42);
   EXPECT_EQ(r2, 21);
