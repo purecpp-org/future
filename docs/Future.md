@@ -1,4 +1,16 @@
-Future文档
+# Future文档
+
+# 目录
+
+* [背景和动机](#背景和动机)
+* [基本概念](#基本概念)
+* [快速示例](#快速示例)
+* [如何创建future](#如何创建future)
+* [获取future值](#获取future值)
+* [线程策略](#线程策略)
+* [异常处理](#异常处理)
+* [WhenAll/WhenAny](#WhenAll/WhenAny)
+* [RoadMap](#RoadMap)
 
 # 背景和动机
 
@@ -367,7 +379,7 @@ WhenAll除了支持容器之外，还支持了变参，即可以传入任意个�
   f.Get();
 ```
 
-# TODO
+# RoadMap
 1. 支持更多的异步操作函数；
 2. 支持构建future表达式和图
 3. 支持协程
