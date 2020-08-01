@@ -19,11 +19,21 @@ add_definitions(
         -DBOOST_THREAD_PROVIDES_EXECUTORS
         -DBOOST_THREAD_USES_MOVE)
 
+#language standard
+if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+    set(CMAKE_CXX_STANDARD 17)
+    message("using C++17 standard...")
+else()
+    set(CMAKE_CXX_STANDARD 11)
+    message("using C++11 standard...")
+endif()
+
 # 3rd party
-OPTION(COPMILE_WITH_3RD_PARTY "Compile with 3rd party libraries." OFF)
+OPTION(COPMILE_WITH_3RD_PARTY "Compile with 3rd party libraries." ON)
 if(COPMILE_WITH_3RD_PARTY)
-    add_subdirectory(3rd_party/abseil-cpp)
+    message("using 3rd party libraries...")
     add_subdirectory(3rd_party/googletest)
+    add_subdirectory(3rd_party/abseil-cpp)
     list(APPEND LINK_LIBRARIES absl::flat_hash_map)
 else()
     include_directories(
@@ -37,15 +47,9 @@ endif()
 
 ######## compiler options #######
 if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
-    set(CMAKE_CXX_STANDARD 17)
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /MT")
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /MTd")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
-    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-    message("using C++17 standard...")
 else()
-    set(CMAKE_CXX_STANDARD 11)
-    message("using C++11 standard...")
     list(APPEND LINK_LIBRARIES pthread)
     if(CMAKE_COMPILE_IS_GUNCXX)
         set(CMAKE_CXX_FLAGS "--coverage")
