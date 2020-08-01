@@ -29,7 +29,7 @@ else()
 endif()
 
 # 3rd party
-OPTION(COPMILE_WITH_3RD_PARTY "Compile with 3rd party libraries." ON)
+OPTION(COPMILE_WITH_3RD_PARTY "Compile with 3rd party libraries." OFF)
 if(COPMILE_WITH_3RD_PARTY)
     message("using 3rd party libraries...")
     add_subdirectory(3rd_party/googletest)
@@ -54,7 +54,8 @@ else()
     if(CMAKE_COMPILE_IS_GUNCXX)
         set(CMAKE_CXX_FLAGS "--coverage")
     else()
-        set(CMAKE_CXX_FLAGS "-fprofile-instr-generate -fcoverage-mapping")
+        #set(CMAKE_CXX_FLAGS "-fprofile-instr-generate -fcoverage-mapping")
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fprofile-instr-generate -fcoverage-mapping")
     endif()
 endif()
 ################################
