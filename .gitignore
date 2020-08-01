@@ -34,5 +34,9 @@
 
 # Temp Folders
 .idea
+.vs
 build
 cmake-*
+
+# vs cmake confituration
+CMakeSettings.json
