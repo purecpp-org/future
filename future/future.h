@@ -169,7 +169,7 @@ private:
   }
 
   template <typename R, typename U, typename F, typename Arg>
-  auto Invoke(F fn, Arg arg) ->
+  static auto Invoke(F fn, Arg arg) ->
       typename std::enable_if<!IsTry<U>::value && std::is_same<void, U>::value,
                               try_type_t<decltype(fn())>>::type {
     using type = decltype(fn());
@@ -177,7 +177,7 @@ private:
   }
 
   template <typename U, typename F, typename Arg>
-  auto Invoke(F fn, Arg arg) -> typename std::enable_if<
+  static auto Invoke(F fn, Arg arg) -> typename std::enable_if<
       !IsTry<U>::value && !std::is_same<void, U>::value &&
           !std::is_void<typename function_traits<F>::return_type>::value,
       try_type_t<decltype(fn(arg.Value()))>>::type {
@@ -186,7 +186,7 @@ private:
   }
 
   template <typename U, typename F, typename Arg>
-  auto Invoke(F fn, Arg arg) -> typename std::enable_if<
+  static auto Invoke(F fn, Arg arg) -> typename std::enable_if<
       !IsTry<U>::value && !std::is_same<void, U>::value &&
           std::is_void<typename function_traits<F>::return_type>::value,
       try_type_t<decltype(fn(arg.Value()))>>::type {
@@ -196,7 +196,7 @@ private:
   }
 
   template <typename U, typename F, typename Arg>
-  auto Invoke(F fn, Arg arg) -> typename std::enable_if<
+  static auto Invoke(F fn, Arg arg) -> typename std::enable_if<
       IsTry<U>::value && !std::is_same<void, typename IsTry<U>::Inner>::value &&
           !std::is_void<typename function_traits<F>::return_type>::value,
       try_type_t<decltype(fn(std::move(arg)))>>::type {
@@ -205,7 +205,7 @@ private:
   }
 
   template <typename U, typename F, typename Arg>
-  auto Invoke(F fn, Arg arg) -> typename std::enable_if<
+  static auto Invoke(F fn, Arg arg) -> typename std::enable_if<
       IsTry<U>::value && !std::is_same<void, typename IsTry<U>::Inner>::value &&
           std::is_void<typename function_traits<F>::return_type>::value,
       try_type_t<decltype(fn(std::move(arg)))>>::type {
@@ -215,7 +215,7 @@ private:
   }
 
   template <typename U, typename F, typename Arg>
-  auto Invoke(F fn, Arg arg) -> typename std::enable_if<
+  static auto Invoke(F fn, Arg arg) -> typename std::enable_if<
       IsTry<U>::value && std::is_same<void, typename IsTry<U>::Inner>::value &&
           std::is_void<typename function_traits<F>::return_type>::value,
       try_type_t<decltype(fn(std::move(arg)))>>::type {
@@ -225,7 +225,7 @@ private:
   }
 
   template <typename U, typename F, typename Arg>
-  auto Invoke(F fn, Arg arg) -> typename std::enable_if<
+  static auto Invoke(F fn, Arg arg) -> typename std::enable_if<
       IsTry<U>::value && std::is_same<void, typename IsTry<U>::Inner>::value &&
           !std::is_void<typename function_traits<F>::return_type>::value,
       try_type_t<decltype(fn(std::move(arg)))>>::type {
@@ -234,7 +234,7 @@ private:
   }
 
   template <typename U, typename F, typename Arg>
-  auto Invoke(F fn, Arg arg) -> typename std::enable_if<
+  static auto Invoke(F fn, Arg arg) -> typename std::enable_if<
       IsFuture<U>::value &&
           !std::is_same<void, typename IsFuture<U>::Inner>::value,
       try_type_t<decltype(fn(std::move(arg)))>>::type {
