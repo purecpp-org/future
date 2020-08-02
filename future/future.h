@@ -120,10 +120,10 @@ private:
 
     std::unique_lock<std::mutex> lock(shared_state_->then_mtx_);
     if (shared_state_->state_ == FutureStatus::None) {
-      shared_state_->then_ = [policy, executor, func, next_prom,
+      shared_state_->continuations_.emplace_back([policy, executor, func, next_prom,
                               state]() mutable {
         ExecuteTask<FirstArg>(policy, executor, func, next_prom, state);
-      };
+      });
     } else if (shared_state_->state_ == FutureStatus::Done) {
       lock.unlock();
       ExecuteTask<FirstArg>(policy, executor, func, next_prom, shared_state_);
@@ -428,25 +428,25 @@ template <typename FirstArg, typename F, typename Executor, typename U>
 void Future<T>::ExecuteTask(Lauch policy, Executor *executor, MoveWrapper<F> func,
   MoveWrapper<Promise<U>> next_prom,
   std::shared_ptr<SharedState<T>> const& state) {
-    auto task = [func, state, next_prom]() mutable {
-      try {
-        auto result = Invoke<FirstArg>(func.move(), state->value_);
-          next_prom->SetValue(std::move(result));
-        } catch (...) {
-          next_prom->SetException(std::current_exception());
-        }
-      };
-
-      if(executor){
-        executor->submit(std::move(task));
-        return;
+  auto task = [func, state, next_prom]() mutable {
+    try {
+      auto result = Invoke<FirstArg>(func.move(), state->value_);
+        next_prom->SetValue(std::move(result));
+      } catch (...) {
+        next_prom->SetException(std::current_exception());
       }
+    };
 
-      if (policy == Lauch::Async) {
-        Async(std::move(task));
-      } else {
-        task();
-      }
+    if(executor){
+      executor->submit(std::move(task));
+      return;
+    }
+
+    if (policy == Lauch::Async) {
+      Async(std::move(task));
+    } else {
+      task();
+    }
   }
 }
 
