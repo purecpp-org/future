@@ -52,7 +52,7 @@ template <typename T> struct SharedState {
   std::mutex then_mtx_;
   std::condition_variable cond_var_;
   Try<T> value_;
-  std::function<void(ValueType &&)> then_;
+  std::function<void()> then_;
   FutureStatus state_;
   std::atomic<bool> has_retrieved_;
 };

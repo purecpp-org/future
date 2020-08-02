@@ -28,7 +28,7 @@ public:
     }
 
     if (shared_state_->then_) {
-      shared_state_->then_(std::move(shared_state_->value_));
+      shared_state_->then_(/*std::move(shared_state_->value_)*/);
     }
   }
 
