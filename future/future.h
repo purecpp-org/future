@@ -113,8 +113,7 @@ private:
 
     std::unique_lock<std::mutex> lock(shared_state_->then_mtx_);
     if (shared_state_->state_ == FutureStatus::None) {
-      shared_state_->then_ = [policy, executor, func, next_prom,
-                              this](typename TryWrapper<T>::type &&t) mutable {
+      shared_state_->then_ = [policy, executor, func, next_prom](typename TryWrapper<T>::type &&t) mutable {
         ExecuteTask<FirstArg>(policy, executor, func, next_prom, std::move(t));
       };
     } else if (shared_state_->state_ == FutureStatus::Done) {
@@ -136,11 +135,11 @@ private:
   }
 
   template <typename FirstArg, typename F, typename Executor, typename U>
-  void ExecuteTask(Lauch policy, Executor *executor, MoveWrapper<F> func,
+  static void ExecuteTask(Lauch policy, Executor *executor, MoveWrapper<F> func,
                    MoveWrapper<Promise<U>> next_prom,
                    typename TryWrapper<T>::type &&t) {
     auto arg = MakeMoveWrapper(std::move(t));
-    auto task = [func, arg, next_prom, this]() mutable {
+    auto task = [func, arg, next_prom]() mutable {
       try {
         auto result = Invoke<FirstArg>(func.move(), arg.move());
         next_prom->SetValue(std::move(result));
