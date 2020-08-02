@@ -531,6 +531,27 @@ TEST(future_wait, not_timeout){
   }
 }
 
+TEST(future_then, multiple_continuation) {
+  auto future = Async([] {
+    std::this_thread::sleep_for(std::chrono::milliseconds (10));
+    return 2;
+  });
+
+  auto future1 = future.Then([](int x) {
+    return x + 1;
+  });
+
+  auto future2 = future.Then([](int x) {
+    return x * 2;
+  });
+
+  auto result1 = future1.Get();
+  auto result2 = future2.Get();
+  EXPECT_EQ(result1, 3);
+  EXPECT_EQ(result2, 4);
+}
+
+
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
