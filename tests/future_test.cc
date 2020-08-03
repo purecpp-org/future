@@ -41,6 +41,12 @@ TEST(future_then, async_then)
   EXPECT_EQ(future.Get(), 6);
 }
 
+TEST(future_then, void_then) {
+  auto future = Async([] {});
+
+  future.Then(Lauch::Callback, [](Try<void> t) { EXPECT_TRUE(t.HasValue()); });
+}
+
 TEST(when_any, any)
 {
   std::vector<std::thread> threads;
