@@ -25,9 +25,7 @@ template <typename E> struct ExecutorAdaptor {
   template <typename... Args>
   ExecutorAdaptor(Args &&... args) : ex(std::forward<Args>(args)...) {}
 
-  void submit(std::function<void()> f) {
-    ex.submit(std::move(f));
-  }
+  void submit(std::function<void()> f) { ex.submit(std::move(f)); }
 
   E ex;
 };
@@ -53,13 +51,16 @@ public:
   }
 
   template <typename F>
-  Future<absl::result_of_t<typename std::decay<F>::type(typename TryWrapper<T>::type)>> Then(Lauch policy, F &&fn) {
+  Future<absl::result_of_t<
+      typename std::decay<F>::type(typename TryWrapper<T>::type)>>
+  Then(Lauch policy, F &&fn) {
     return ThenImpl(policy, (EmptyExecutor *)nullptr, std::forward<F>(fn));
   }
 
   template <typename F, typename Ex>
-  Future<absl::result_of_t<typename std::decay<F>::type(typename TryWrapper<T>::type)>> Then(Ex* executor,
-                                                        F &&fn) {
+  Future<absl::result_of_t<
+      typename std::decay<F>::type(typename TryWrapper<T>::type)>>
+  Then(Ex *executor, F &&fn) {
     return ThenImpl(Lauch::Async, executor, std::forward<F>(fn));
   }
 
@@ -98,11 +99,10 @@ public:
   void Wait() { shared_state_->Wait(); }
 
 private:
-
-    template <typename FirstArg, typename F, typename Executor, typename U>
-    static void ExecuteTask(Lauch policy, Executor *executor, MoveWrapper<F> func,
-                            MoveWrapper<Promise<U>> next_prom,
-                            std::shared_ptr<SharedState<T>> const& state);
+  template <typename FirstArg, typename F, typename Executor, typename U>
+  static void ExecuteTask(Lauch policy, Executor *executor, MoveWrapper<F> func,
+                          MoveWrapper<Promise<U>> next_prom,
+                          std::shared_ptr<SharedState<T>> const &state);
 
   template <typename F, typename Ex>
   Future<typename function_traits<F>::return_type>
@@ -120,10 +120,10 @@ private:
 
     std::unique_lock<std::mutex> lock(shared_state_->then_mtx_);
     if (shared_state_->state_ == FutureStatus::None) {
-      shared_state_->continuations_.emplace_back([policy, executor, func, next_prom,
-                              state]() mutable {
-        ExecuteTask<FirstArg>(policy, executor, func, next_prom, state);
-      });
+      shared_state_->continuations_.emplace_back(
+          [policy, executor, func, next_prom, state]() mutable {
+            ExecuteTask<FirstArg>(policy, executor, func, next_prom, state);
+          });
     } else if (shared_state_->state_ == FutureStatus::Done) {
       lock.unlock();
       ExecuteTask<FirstArg>(policy, executor, func, next_prom, shared_state_);
@@ -266,7 +266,8 @@ template <typename F, typename... Args>
 inline Future<
     absl::result_of_t<typename std::decay<F>::type(absl::decay_t<Args>...)>>
 Async(F &&fn, Args &&... args) {
-  return future_internal::AsyncImpl(Lauch::Async, (EmptyExecutor*)nullptr, std::forward<F>(fn),
+  return future_internal::AsyncImpl(Lauch::Async, (EmptyExecutor *)nullptr,
+                                    std::forward<F>(fn),
                                     std::forward<Args>(args)...);
 }
 
@@ -425,29 +426,30 @@ WhenAll(F &&... futures) {
 
 template <typename T>
 template <typename FirstArg, typename F, typename Executor, typename U>
-void Future<T>::ExecuteTask(Lauch policy, Executor *executor, MoveWrapper<F> func,
-  MoveWrapper<Promise<U>> next_prom,
-  std::shared_ptr<SharedState<T>> const& state) {
+void Future<T>::ExecuteTask(Lauch policy, Executor *executor,
+                            MoveWrapper<F> func,
+                            MoveWrapper<Promise<U>> next_prom,
+                            std::shared_ptr<SharedState<T>> const &state) {
   auto task = [func, state, next_prom]() mutable {
     try {
       auto result = Invoke<FirstArg>(func.move(), state->value_);
-        next_prom->SetValue(std::move(result));
-      } catch (...) {
-        next_prom->SetException(std::current_exception());
-      }
-    };
-
-    if(executor){
-      executor->submit(std::move(task));
-      return;
+      next_prom->SetValue(std::move(result));
+    } catch (...) {
+      next_prom->SetException(std::current_exception());
     }
+  };
 
-    if (policy == Lauch::Async) {
-      Async(std::move(task));
-    } else {
-      task();
-    }
+  if (executor) {
+    executor->submit(std::move(task));
+    return;
   }
+
+  if (policy == Lauch::Async) {
+    Async(std::move(task));
+  } else {
+    task();
+  }
+}
 }
 
 
