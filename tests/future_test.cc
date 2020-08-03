@@ -551,6 +551,51 @@ TEST(future_then, multiple_continuation) {
   EXPECT_EQ(result2, 4);
 }
 
+TEST(future_then, callback){
+  auto future = Async([] {
+    std::this_thread::sleep_for(std::chrono::milliseconds (50));
+    return 2;
+  });
+
+  future.Then([](int i){
+    return i+2;
+  }).Then(Lauch::Callback, [](int i){
+    EXPECT_EQ(i, 4);
+  });
+}
+
+TEST(future_then, callback_void){
+  auto future = Async([] {
+    std::this_thread::sleep_for(std::chrono::milliseconds (50));
+    return 2;
+  });
+
+  future.Then(Lauch::Callback, [](int i){
+    EXPECT_EQ(i, 2);
+  });
+}
+
+TEST(future_then, finally){
+  auto future = Async([] {
+    std::this_thread::sleep_for(std::chrono::milliseconds (50));
+    return 2;
+  });
+
+  future.Finally([](int i){
+    EXPECT_EQ(i, 2);
+  });
+
+  {
+    auto future = Async([] {
+      std::this_thread::sleep_for(std::chrono::milliseconds (50));
+      return 2;
+    });
+
+    future.Finally([](int i){
+      EXPECT_EQ(i, 2);
+    });
+  }
+}
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
