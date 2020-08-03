@@ -456,7 +456,9 @@ void Future<T>::ExecuteTask(Lauch policy, Executor *executor,
 
     auto mv_future = MakeMoveWrapper(std::move(future));
     Async([mv_future, this]() mutable {
-      mv_future.move().Get();
+      auto&& f = mv_future.move();
+      f.WaitFor(std::chrono::minutes(60));//60 minutes is long enough
+      f.Get();
     });
   }else{
     task();
