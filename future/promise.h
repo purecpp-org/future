@@ -16,19 +16,23 @@ public:
 
   template <typename... Args> void SetValue(Args &&... val) {
     static_assert(sizeof...(Args) <= 1, "at most one argument");
-    {
-      std::unique_lock<std::mutex> lock(shared_state_->then_mtx_);
-      if (shared_state_->state_ != FutureStatus::None) {
-        return;
-      }
-
-      shared_state_->state_ = FutureStatus::Done;
-      SetValueInternal(std::forward<Args...>(val)...);
-      shared_state_->cond_var_.notify_all();
+    std::unique_lock<std::mutex> lock(shared_state_->then_mtx_);
+    if (shared_state_->state_ != FutureStatus::None) {
+      return;
     }
 
-    if (shared_state_->then_) {
-      shared_state_->then_(std::move(shared_state_->value_));
+    shared_state_->state_ = FutureStatus::Done;
+    SetValueInternal(std::forward<Args...>(val)...);
+    shared_state_->cond_var_.notify_all();
+
+    std::vector<std::function<void()>> continuations =
+      std::move(shared_state_->continuations_);
+    lock.unlock();
+
+    for(auto const& continuation : continuations) {
+      if(continuation) {
+        continuation();
+      }
     }
   }
 
