@@ -22,7 +22,7 @@
 
 2. avoid [callback hell](https://en.wiktionary.org/wiki/callback_hell)
 
-So we need to extend std::future to support continuable call. This the motiviation of [ray.Future]().
+So we need to extend std::future to support continuable call. This the motiviation of [ray.Future](https://github.com/qicosmos/future_demo/blob/master/future/future.h).
 
 # basic concepts
 
