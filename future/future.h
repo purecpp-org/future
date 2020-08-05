@@ -12,7 +12,7 @@
 
 namespace ray {
 
-enum class Lauch { Async, Sync };
+enum class Lauch { Async, Sync, Callback };
 
 struct EmptyExecutor {
   template <typename F> void submit(F &&fn) {}
@@ -98,9 +98,14 @@ public:
 
   void Wait() { shared_state_->Wait(); }
 
+  template <typename F>
+  void Finally(F&& fn){
+    Then(Lauch::Callback, std::forward<F>(fn));
+  }
+
 private:
   template <typename FirstArg, typename F, typename Executor, typename U>
-  static void ExecuteTask(Lauch policy, Executor *executor, MoveWrapper<F> func,
+  void ExecuteTask(Lauch policy, Executor *executor, MoveWrapper<F> func,
                           MoveWrapper<Promise<U>> next_prom,
                           std::shared_ptr<SharedState<T>> const &state);
 
@@ -121,7 +126,7 @@ private:
     std::unique_lock<std::mutex> lock(shared_state_->then_mtx_);
     if (shared_state_->state_ == FutureStatus::None) {
       shared_state_->continuations_.emplace_back(
-          [policy, executor, func, next_prom, state]() mutable {
+          [policy, executor, func, next_prom, state, this]() mutable {
             ExecuteTask<FirstArg>(policy, executor, func, next_prom, state);
           });
     } else if (shared_state_->state_ == FutureStatus::Done) {
@@ -446,7 +451,16 @@ void Future<T>::ExecuteTask(Lauch policy, Executor *executor,
 
   if (policy == Lauch::Async) {
     Async(std::move(task));
-  } else {
+  } else if(policy == Lauch::Callback){
+    auto future = Async(std::move(task));
+
+    auto mv_future = MakeMoveWrapper(std::move(future));
+    Async([mv_future, this]() mutable {
+      auto&& f = mv_future.move();
+      f.WaitFor(std::chrono::minutes(60));//60 minutes is long enough
+      f.Get();
+    });
+  }else{
     task();
   }
 }
