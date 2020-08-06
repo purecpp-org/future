@@ -29,8 +29,8 @@ else()
 endif()
 
 # 3rd party
-OPTION(COPMILE_WITH_3RD_PARTY "Compile with 3rd party libraries." OFF)
-if(COPMILE_WITH_3RD_PARTY)
+OPTION(COMPILE_WITH_3RD_PARTY "Compile with 3rd party libraries." OFF)
+if(COMPILE_WITH_3RD_PARTY)
     message("using 3rd party libraries...")
     add_subdirectory(3rd_party/googletest)
     add_subdirectory(3rd_party/abseil-cpp)
