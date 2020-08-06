@@ -37,6 +37,7 @@
 .vs
 build
 cmake-*
+out
 
 # vs cmake confituration
 CMakeSettings.json
