@@ -17,7 +17,7 @@
 #endif
 #include "traits.h"
 
-namespace ray {
+namespace purecpp {
 
 #if __cplusplus <= 201402L
 template <typename... Args> using ray_variant = absl::variant<Args...>;

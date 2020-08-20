@@ -10,7 +10,7 @@
 #include "shared_state.h"
 #include "promise.h"
 
-namespace ray {
+namespace purecpp {
 
 enum class Lauch { Async, Sync, Callback };
 

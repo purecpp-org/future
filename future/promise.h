@@ -7,7 +7,7 @@
 
 #include "shared_state.h"
 
-namespace ray{
+namespace purecpp {
 template <typename T> class Future;
 
 template <typename T> class Promise {

@@ -7,7 +7,7 @@
 #if __cplusplus <= 201402L
 #include "absl/meta/type_traits.h"
 #endif
-namespace ray {
+namespace purecpp {
 #if __cplusplus <= 201402L
 template <typename T, typename... Args> struct holder {};
 

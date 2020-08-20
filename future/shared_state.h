@@ -10,7 +10,7 @@
 #include <type_traits>
 #include <condition_variable>
 
-namespace ray{
+namespace purecpp {
 enum class FutureStatus { None, Timeout, Done, Retrived };
 
 template <typename T> struct SharedState {

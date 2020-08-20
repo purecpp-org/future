@@ -3,7 +3,7 @@
 #include <boost/thread/executors/basic_thread_pool.hpp>
 #include <future/future.h>
 
-using namespace ray;
+using namespace purecpp;
 
 template<typename... Args>
 inline void Print(Args&&... args) {

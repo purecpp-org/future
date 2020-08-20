@@ -4,7 +4,7 @@
 
 #ifndef FUTURE_DEMO_HELPER_H
 #define FUTURE_DEMO_HELPER_H
-namespace ray {
+namespace purecpp {
 // from folly
 template <class T> class MoveWrapper {
 public:
