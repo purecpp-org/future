@@ -1,5 +1,7 @@
 # future_demo
-a future extension implemented in c++11. crossplatform, header only, easy to use!
+a std::future extension implemented in c++11. 
+
+the familiar taste purecpp always has: crossplatform, header only, easy to use!
 
 # doc
 
