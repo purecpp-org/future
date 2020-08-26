@@ -29,7 +29,7 @@ C++11标准中提供了std::future和std::promise，但是标准库的future无�
 表示一个异步返回的对象，还没有被计算的结果，一个未来的值。
 
 ## promise
-一个异步返回对象(future)的创建者，也是移步结果的创建者，当promise设置值后会触发future取值的返回。
+一个异步返回对象(future)的创建者，也是异步结果的创建者，当promise设置值后会触发future取值的返回。
 
 ## 共享状态
 
@@ -42,7 +42,7 @@ promise和future通过一个内部的共享状态关联，future等待共享状�
 
 ![promise-future](promise.png)
 
-## Try<T>
+## Try <T>
 表示的值可能是T也可能是一个异常，它用于future then链式调用的时候异常处理。
 
 # 快速示例
@@ -99,7 +99,7 @@ future链式调用，Async和Then的回调函数都是在一个独立线程中�
   EXPECT_EQ(r2, 21);
 ```
 
-## 发起多个异步调用，等待任意一个移步操作完成。
+## 发起多个异步调用，等待任意一个异步操作完成。
 
 代码1-4：
 ```
