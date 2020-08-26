@@ -418,6 +418,46 @@ private:
   std::mutex mtx_;
   size_t count_ = 0;
 };
+
+template <typename... F>
+class WhenAnyContext
+    : public std::enable_shared_from_this<WhenAnyContext<F...>> {
+public:
+  using result_type =
+      std::pair<size_t, absl::variant<typename TryWrapper<
+                            typename absl::decay_t<F>::InnerType>::type...>>;
+
+  template <typename T, typename I> void operator()(T &&f, I i) {
+    using value_t =
+        typename TryWrapper<typename absl::decay_t<T>::InnerType>::type;
+    auto self = this->shared_from_this();
+    f.Then([self, this](value_t &&t) {
+      std::unique_lock<std::mutex> lock(mtx_);
+      if (has_value_) {
+        return;
+      }
+
+      has_value_ = true;
+      results_ = std::make_pair(decltype(i)::value, std::move(t));
+      pm_.SetValue(std::move(results_));
+    });
+  }
+
+  template <typename Tuple> void for_each(Tuple &&tp) {
+    for_each_tp(std::move(tp), *this,
+                absl::make_index_sequence<sizeof...(F)>{});
+  }
+
+  Future<result_type> GetFuture() {
+    return pm_.GetFuture();
+  }
+
+private:
+  Promise<result_type> pm_;
+  result_type results_;
+  std::mutex mtx_;
+  bool has_value_ = false;
+};
 }
 
 template <typename... F>
@@ -425,6 +465,14 @@ Future<std::tuple<Try<typename absl::decay_t<F>::InnerType>...>>
 WhenAll(F &&... futures) {
   static_assert(sizeof...(F) > 0, "at least one argument");
   auto ctx = std::make_shared<internal::WhenAllContext<F...>>();
+  ctx->for_each(std::forward_as_tuple(std::forward<F>(futures)...));
+  return ctx->GetFuture();
+}
+
+template <typename... F>
+Future<std::pair<size_t, absl::variant<Try<typename absl::decay_t<F>::InnerType>...>>> WhenAny(F &&... futures) {
+  static_assert(sizeof...(F) > 0, "at least one argument");
+  auto ctx = std::make_shared<internal::WhenAnyContext<F...>>();
   ctx->for_each(std::forward_as_tuple(std::forward<F>(futures)...));
   return ctx->GetFuture();
 }

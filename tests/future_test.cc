@@ -319,6 +319,29 @@ TEST(when_all, when_all_variadic_get){
   EXPECT_TRUE(r2.HasValue());
 }
 
+TEST(when_any, when_any_variadic){
+  Promise<int> p1;
+  Promise<void> p2;
+
+  auto f1 = p1.GetFuture();
+  auto f2 = p2.GetFuture();
+  auto future = WhenAny(f1, f2);
+
+  p1.SetValue(42);
+  p2.SetValue();
+
+  auto pair = future.Get();
+  size_t index = pair.first;
+  auto val = pair.second;
+  if(index==0){
+    auto result = absl::get<0>(val);
+    EXPECT_EQ(result.Value(), 42);
+  }else{
+    auto result = absl::get<1>(val);
+    EXPECT_TRUE(result.HasValue());
+  }
+}
+
 TEST(try_get, try_get_val){
   Try<int> t;
   EXPECT_THROW(t.Value(), std::exception);
