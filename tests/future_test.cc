@@ -44,7 +44,22 @@ TEST(future_then, async_then)
 TEST(future_then, void_then) {
   auto future = Async([] {});
 
-  future.Then(Lauch::Callback, [](Try<void> t) { EXPECT_TRUE(t.HasValue()); });
+  auto lambda = [] {};
+  using type = decltype(lambda);
+  static_assert(std::is_same<function_traits<type>::first_arg_t, void>::value, "");
+
+  int a = 0;
+
+  auto future1 = future.Then(Lauch::Callback, 
+      [](Try<void> t) { 
+      EXPECT_TRUE(t.HasValue()); 
+  }).Then([&a] { 
+    a = 2020;
+    return; 
+  });
+
+  future1.Wait();
+  EXPECT_EQ(a, 2020);
 }
 
 TEST(when_any, any)
