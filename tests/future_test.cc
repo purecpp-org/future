@@ -325,7 +325,6 @@ TEST(when_all, when_all_variadic_get){
   p2.SetValue();
 
   auto result = future.Get();
-  assert(std::get<0>(future.Get()).HasValue());
   assert(std::get<0>(result).HasValue());
   auto& r1 = std::get<0>(result);
   auto& r2 = std::get<1>(result);
@@ -643,5 +642,6 @@ TEST(future_then, finally){
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
+  auto result =  RUN_ALL_TESTS();
+  return result;
 }
