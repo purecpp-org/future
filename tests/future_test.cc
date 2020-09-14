@@ -44,7 +44,22 @@ TEST(future_then, async_then)
 TEST(future_then, void_then) {
   auto future = Async([] {});
 
-  future.Then(Lauch::Callback, [](Try<void> t) { EXPECT_TRUE(t.HasValue()); });
+  auto lambda = [] {};
+  using type = decltype(lambda);
+  static_assert(std::is_same<function_traits<type>::first_arg_t, void>::value, "");
+
+  int a = 0;
+
+  auto future1 = future.Then(Lauch::Callback, 
+      [](Try<void> t) { 
+      EXPECT_TRUE(t.HasValue()); 
+  }).Then([&a] { 
+    a = 2020;
+    return; 
+  });
+
+  future1.Wait();
+  EXPECT_EQ(a, 2020);
 }
 
 TEST(when_any, any)
@@ -310,7 +325,6 @@ TEST(when_all, when_all_variadic_get){
   p2.SetValue();
 
   auto result = future.Get();
-  assert(std::get<0>(future.Get()).HasValue());
   assert(std::get<0>(result).HasValue());
   auto& r1 = std::get<0>(result);
   auto& r2 = std::get<1>(result);
@@ -628,5 +642,6 @@ TEST(future_then, finally){
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
+  auto result =  RUN_ALL_TESTS();
+  return result;
 }

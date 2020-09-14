@@ -51,15 +51,13 @@ public:
   }
 
   template <typename F>
-  Future<absl::result_of_t<
-      typename std::decay<F>::type(typename TryWrapper<T>::type)>>
+  Future<typename function_traits<F>::return_type>
   Then(Lauch policy, F &&fn) {
     return ThenImpl(policy, (EmptyExecutor *)nullptr, std::forward<F>(fn));
   }
 
   template <typename F, typename Ex>
-  Future<absl::result_of_t<
-      typename std::decay<F>::type(typename TryWrapper<T>::type)>>
+  Future<typename function_traits<F>::return_type>
   Then(Ex *executor, F &&fn) {
     return ThenImpl(Lauch::Async, executor, std::forward<F>(fn));
   }
@@ -146,12 +144,23 @@ private:
     return std::move(shared_state_->value_.Value());
   }
 
-  template <typename R, typename U, typename F, typename Arg>
+  template <typename R, typename F, typename Arg>
+  static try_type_t<R> InvokeVoid(F fn, Arg arg, std::true_type/* R is same with void*/) {
+    fn();
+    return try_type_t<R>{};
+  }
+
+  template <typename R, typename F, typename Arg>
+  static try_type_t<R> InvokeVoid(F fn, Arg arg, std::false_type/* R is not void type */) {
+      return try_type_t<R>(fn());
+  }
+
+  template <typename U, typename F, typename Arg>
   static auto Invoke(F fn, Arg arg) ->
       typename std::enable_if<!IsTry<U>::value && std::is_same<void, U>::value,
                               try_type_t<decltype(fn())>>::type {
-    using type = decltype(fn());
-    return try_type_t<type>(fn());
+      using type = decltype(fn());
+      return InvokeVoid<type>(fn, arg, std::is_same<void, type>{});
   }
 
   template <typename U, typename F, typename Arg>
