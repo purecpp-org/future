@@ -15,7 +15,7 @@ namespace purecpp {
 enum class Lauch { Async, Sync, Callback };
 
 struct EmptyExecutor {
-  template <typename F> void submit(F &&fn) {}
+  template <typename F> void submit(F &&) {}
 };
 
 template <typename E> struct ExecutorAdaptor {
@@ -145,13 +145,13 @@ private:
   }
 
   template <typename R, typename F, typename Arg>
-  static try_type_t<R> InvokeVoid(F fn, Arg arg, std::true_type/* R is same with void*/) {
+  static try_type_t<R> InvokeVoid(F fn, Arg , std::true_type/* R is same with void*/) {
     fn();
     return try_type_t<R>{};
   }
 
   template <typename R, typename F, typename Arg>
-  static try_type_t<R> InvokeVoid(F fn, Arg arg, std::false_type/* R is not void type */) {
+  static try_type_t<R> InvokeVoid(F fn, Arg , std::false_type/* R is not void type */) {
       return try_type_t<R>(fn());
   }
 
@@ -512,7 +512,7 @@ void Future<T>::ExecuteTask(Lauch policy, Executor *executor,
     auto future = Async(std::move(task));
 
     auto mv_future = MakeMoveWrapper(std::move(future));
-    Async([mv_future, this]() mutable {
+    Async([mv_future]() mutable {
       auto&& f = mv_future.move();
       f.WaitFor(std::chrono::minutes(60));//60 minutes is long enough
       f.Get();

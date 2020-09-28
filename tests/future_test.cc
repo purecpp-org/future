@@ -260,7 +260,7 @@ TEST(when_all, when_all_in_thread){
 
   auto fall = WhenAll(std::begin(futures), std::end(futures));
   fall.Then([]( Try<std::vector<int>> result) {
-    EXPECT_EQ(result.Value().size(), 8);
+    EXPECT_EQ(result.Value().size(), size_t(8));
   });
 
   for (auto& t : threads)
@@ -400,7 +400,7 @@ TEST(when_all_any, check_arguments){
   {
     auto future = WhenAny(futures.begin(), futures.begin());
     auto pair = future.Get();
-    EXPECT_EQ(pair.first, 0);
+    EXPECT_EQ(pair.first, size_t(0));
     EXPECT_EQ(pair.second, 0);
   }
 }
@@ -516,7 +516,7 @@ TEST(future_wait, timeout){
 
     auto status = future.WaitFor(std::chrono::milliseconds(20));
     EXPECT_EQ(status, FutureStatus::Timeout);
-    EXPECT_THROW(future.Then([](int i){}), std::exception);
+    EXPECT_THROW(future.Then([](int ){}), std::exception);
   }
 
   {

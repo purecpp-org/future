@@ -59,6 +59,7 @@ else()
         set(CMAKE_CXX_FLAGS "-fprofile-instr-generate -fcoverage-mapping")
     endif()
 endif()
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra")
 ################################
 
 include_directories(${CMAKE_SOURCE_DIR})
